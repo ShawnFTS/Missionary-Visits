@@ -173,7 +173,7 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
     res.sendFile(path.join(root, "public", "booking.html"));
   });
-  app.use(express.static(path.join(root, "public"), { index: "index.html" }));
+  app.use(express.static(path.join(root, "public"), { index: "index.html", extensions: ["html"] }));
   app.use((req, res) => res.status(404).send("Not found"));
   app.use((err, req, res, next) => {
     console.error(err);
