@@ -1,9 +1,15 @@
 # Handoff — where we left off (2026-10-03)
 
+*These are working notes for whoever continues this project next (Shawn, or a fresh Claude session). Not for any one person.*
+
 ## What exists
 A working sign-up sheet, **Eagle Mountain West Stake Missionary Member Visits**, built from the stake's Google Doc
 "Missionary Visit Schedule V2". Node + Express + SQLite, no build step. 10 tests pass (`npm test`).
-**Live:** https://web-production-d291da.up.railway.app (Railway project `missionary-visits`, service `web`, volume at `/data`).
+**Live:** https://www.missionaryvisits.com (Railway project `missionary-visits`, service `web`, volume at `/data`;
+the old https://web-production-d291da.up.railway.app address still works). Domain is registered at GoDaddy:
+`CNAME www → qcgft9bd.up.railway.app` plus the `_railway-verify.www` TXT record. GoDaddy can't CNAME the bare domain,
+so `missionaryvisits.com` should *forward* (301) to `https://www.missionaryvisits.com` — as of 2026-10-03 that forward had
+not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL` is set to the www address.
 
 - Week calendar (Sun–Sat); day-specific 45-minute slots (Sun/Mon/Tue/Thu 7:30 & 8:15 PM, Wed 6:45 & 7:30 PM,
   Fri 10:00 & 10:45 AM, Sat 3:00 & 3:45 PM).
@@ -27,12 +33,12 @@ Pushing to GitHub does **not** auto-deploy this service. After `git push`, run `
 ## Not done yet
 1. **Twilio toll-free verification** — submitted/in progress by Shawn; texts to US numbers won't deliver until approved
    (a few business days). Then book a slot ~1 hour out on your own phone with "1 hour before" ticked.
-2. Hand the missionaries their private link.
+2. Hand the missionaries their private link (`https://www.missionaryvisits.com/m/<MISSIONARY_KEY>`).
+   Confirm the GoDaddy forward for the bare domain works.
 3. Service is in Railway's Amsterdam region; can move to a US region.
 
 ## Open questions
 - Should the sign-up form ask which ward the family is in? (Ward is derived from the week only.)
-- Custom domain? Buy at a registrar, add under Railway → Networking, then update `SELF_URL`.
 
 ## Where things are
 `src/` server, slots/rotation (`slots.js`), calendar files (`ics.js`), reminders (`reminders.js`), Twilio (`sms.js`);
