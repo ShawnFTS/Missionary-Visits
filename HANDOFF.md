@@ -4,7 +4,7 @@
 
 ## What exists
 A working sign-up sheet, **Eagle Mountain West Stake Missionary Member Visits**, built from the stake's Google Doc
-"Missionary Visit Schedule V2". Node + Express + SQLite, no build step. 10 tests pass (`npm test`).
+"Missionary Visit Schedule V2". Node + Express + SQLite, no build step. 11 tests pass (`npm test`).
 **Live:** https://www.missionaryvisits.com (Railway project `missionary-visits`, service `web`, volume at `/data`;
 the old https://web-production-d291da.up.railway.app address still works). Domain is registered at GoDaddy:
 `CNAME www → qcgft9bd.up.railway.app` plus the `_railway-verify.www` TXT record. GoDaddy can't CNAME the bare domain,
@@ -20,6 +20,9 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 - .ics download + Google Calendar link; private `/b/<token>` link to re-download or cancel; `/admin` (password).
 - **Missionary view** `/m/<MISSIONARY_KEY>`: all upcoming visits with phone numbers, pick-and-download .ics
   (family + phone + ward in event details), and a live subscribe feed at `/m/<key>/feed.ics`. Off if the key is unset.
+- **Ward permalinks:** `/HA` Harmony, `/OT` Overland Trails, `/SP` Springwater, `/WH` White Hills, `/CF` Cedar Fort,
+  `/FF` Fairfield (case-insensitive). Each 302-redirects to `/?start=<Sunday>` for that ward's next week that still has an
+  open time (skips full/past weeks). Codes come from the ward names; override with `WARD_CODES="HA=Harmony,..."`.
 - Header: missionaries photo as a tinted banner. `public/images/christ.jpg` is in the repo but unused.
 
 ## Secrets (Railway → web → Variables; never in git or chat)
