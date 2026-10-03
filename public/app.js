@@ -55,9 +55,19 @@
     $("when").textContent = `${day.label}, ${day.sub} at ${slot.label}` + (state.ward ? ` · ${state.ward} Ward` : "");
     errEl.textContent = "";
     $("submit").disabled = false;
+    form.elements.textMe.checked = false;
+    form.elements.remindDay.checked = false;
+    form.elements.remindHour.checked = false;
+    $("textDetails").hidden = true;
     dlg.showModal();
     form.elements.family.focus();
   }
+
+  form.elements.textMe.addEventListener("change", () => {
+    const on = form.elements.textMe.checked;
+    $("textDetails").hidden = !on;
+    if (!on) { form.elements.remindDay.checked = false; form.elements.remindHour.checked = false; }
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -71,8 +81,8 @@
           ...picked,
           family: form.elements.family.value,
           phone: form.elements.phone.value,
-          remindDay: form.elements.remindDay.checked,
-          remindHour: form.elements.remindHour.checked,
+          remindDay: form.elements.textMe.checked && form.elements.remindDay.checked,
+          remindHour: form.elements.textMe.checked && form.elements.remindHour.checked,
         }),
       });
       const data = await r.json();

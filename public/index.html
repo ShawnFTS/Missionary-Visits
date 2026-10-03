@@ -49,10 +49,13 @@
       <input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="(801) 555-0123" required>
     </label>
     <fieldset class="reminders" id="reminders" hidden>
-      <legend>Text me a reminder</legend>
-      <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
-      <label class="check"><input type="checkbox" name="remindHour"> 1 hour before</label>
-      <p class="fine">By checking a box you agree to receive automated text messages from the Eagle Mountain West Stake about this visit only: up to 2 messages per visit. Consent is not required to sign up. Message and data rates may apply. Reply STOP to opt out or HELP for help. <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a></p>
+      <label class="check master"><input type="checkbox" name="textMe" id="textMe"> Text me reminders</label>
+      <div id="textDetails" hidden>
+        <p class="fine lead">Choose when to be texted (you'll only get the texts you check):</p>
+        <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
+        <label class="check"><input type="checkbox" name="remindHour"> 1 hour before</label>
+        <p class="fine">By checking a box you agree to receive automated text messages from the Eagle Mountain West Stake about this visit only: up to 2 messages per visit. Consent is not required to sign up. Message and data rates may apply. Reply STOP to opt out or HELP for help. <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a></p>
+      </div>
     </fieldset>
     <p class="err" id="err" role="alert"></p>
     <div class="actions">

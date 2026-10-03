@@ -75,6 +75,8 @@ label.field input:focus { outline: 2px solid var(--navy-2); border-color: var(--
 .reminders legend { font-weight: 600; padding: 0 6px; }
 .check { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-weight: 500; cursor: pointer; }
 .check input { width: 22px; height: 22px; accent-color: var(--navy); }
+.reminders .master { padding: 2px 0; font-weight: 600; }
+.fine.lead { margin: 8px 0 2px; }
 .fine { font-size: .8rem; color: var(--muted); margin: 6px 0 0; }
 .err { color: var(--danger); font-weight: 600; margin: 0 0 12px; min-height: 0; }
 .actions { display: flex; gap: 10px; }
