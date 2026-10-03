@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eagle Mountain West Stake Missionary Member Visits</title>
+<meta name="description" content="Sign up to host the full-time missionaries in your home.">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <!-- Drop christ.jpg and missionaries.jpg into public/images/. A missing file simply hides itself. -->
+    <div class="portraits">
+      <figure class="christ"><img src="/images/christ.jpg" alt="Jesus Christ" onerror="this.closest('figure').remove()"></figure>
+      <figure class="missionaries"><img src="/images/missionaries.jpg" alt="Missionaries of The Church of Jesus Christ of Latter-day Saints" onerror="this.closest('figure').remove()"></figure>
+    </div>
+    <h1>Eagle Mountain West Stake Missionary Member Visits</h1>
+    <p>Find the week your ward is assigned, pick an open time, and enter your family name and phone number. It's a brief visit for the missionaries to get to know your family and to bless your home.</p>
+    <p class="verse">“I was a stranger, and ye took me in.” — Matthew 25:35</p>
+  </div>
+</header>
+
+<main>
+  <section class="panel" aria-labelledby="weekTitle">
+    <p class="ward-line" id="wardLine" hidden></p>
+    <div class="week-nav">
+      <button class="btn ghost" id="prev" aria-label="Previous week">‹ Prev</button>
+      <h2 id="weekTitle" aria-live="polite">&nbsp;</h2>
+      <button class="btn ghost" id="next" aria-label="Next week">Next ›</button>
+    </div>
+    <p class="back-line"><button class="btn ghost small" id="thisWeek" hidden>← Back to this week</button></p>
+    <div id="week" class="week" aria-live="polite"></div>
+    <div class="legend">
+      <span><i style="background:var(--open-bg);border:1px solid #b9d9c7"></i>Open — tap to sign up</span>
+      <span><i style="background:var(--booked-bg)"></i>Taken</span>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form class="dlg" id="form" method="dialog" novalidate>
+    <h3>Host the missionaries</h3>
+    <p class="when" id="when"></p>
+    <label class="field">Family name
+      <input type="text" name="family" autocomplete="family-name" maxlength="50" placeholder="Smith" required>
+    </label>
+    <label class="field">Mobile number
+      <input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="(801) 555-0123" required>
+    </label>
+    <fieldset class="reminders" id="reminders" hidden>
+      <legend>Text me a reminder</legend>
+      <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
+      <label class="check"><input type="checkbox" name="remindHour"> 1 hour before</label>
+      <p class="fine">By checking a box you agree to receive text messages about this visit only. Message and data rates may apply. Reply STOP to opt out.</p>
+    </fieldset>
+    <p class="err" id="err" role="alert"></p>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="cancelDlg">Cancel</button>
+      <button type="submit" class="btn" id="submit">Sign up</button>
+    </div>
+  </form>
+</dialog>
+<footer>
+  <p id="contact"></p>
+  <p>Your phone number is never shown on this page.</p>
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>

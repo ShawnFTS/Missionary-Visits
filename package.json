@@ -1,0 +1,16 @@
+{
+  "name": "missionary-signup",
+  "version": "1.0.0",
+  "description": "Eagle Mountain West Stake Missionary Member Visits — a plain sign-up sheet for hosting the missionaries.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^5.1.0"
+  }
+}

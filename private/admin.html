@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin — Missionary Visits</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="hero small-hero"><div class="hero-inner"><h1><a href="/">Missionary Visits — Admin</a></h1></div></header>
+<main>
+  <section class="panel"><h2 class="serif">Upcoming visits</h2><div id="bookings"></div></section>
+  <section class="panel">
+    <h2 class="serif">Make a time unavailable</h2>
+    <p class="fine">For a ward activity, a transfer day, anything. Tap Open again to put it back.</p>
+    <div class="inline">
+      <label>Date<br><input type="date" id="bDate"></label>
+      <label>Time<br><select id="bTime"></select></label>
+      <button class="btn" id="block">Block it</button>
+    </div>
+    <p class="err" id="err"></p>
+    <div id="blocks"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+const cell = (tr, text) => { const td = document.createElement("td"); td.textContent = text; tr.append(td); return td; };
+async function load() {
+  const s = await (await fetch("/api/admin/state")).json();
+  $("bTime").replaceChildren(...s.times.map((t) => Object.assign(document.createElement("option"), { value: t.value, textContent: t.label })));
+  const b = $("bookings");
+  if (!s.bookings.length) b.textContent = "Nothing booked yet.";
+  else {
+    const t = document.createElement("table");
+    t.innerHTML = "<tr><th>When</th><th>Family</th><th>Phone</th><th>Texts</th><th></th></tr>";
+    for (const x of s.bookings) {
+      const tr = document.createElement("tr");
+      cell(tr, `${x.dayLabel} ${x.timeLabel}`); cell(tr, x.family); cell(tr, x.phone);
+      cell(tr, [x.remindDay && "1 day", x.remindHour && "1 hour"].filter(Boolean).join(", ") + (x.smsError ? " ⚠ " + x.smsError : "") || "—");
+      const td = document.createElement("td");
+      const btn = Object.assign(document.createElement("button"), { className: "btn danger small", textContent: "Cancel" });
+      btn.onclick = async () => { if (confirm(`Cancel ${x.family} on ${x.dayLabel}?`)) { await post(`/api/admin/cancel/${x.id}`); load(); } };
+      td.append(btn); tr.append(td); t.append(tr);
+    }
+    b.replaceChildren(t);
+  }
+  $("blocks").replaceChildren(...s.blocks.map((k) => {
+    const d = document.createElement("div"); d.style.margin = "8px 0";
+    d.append(Object.assign(document.createElement("span"), { className: "tag", textContent: k.label }));
+    const btn = Object.assign(document.createElement("button"), { className: "btn ghost small", textContent: "Open" });
+    btn.onclick = async () => { await post("/api/admin/unblock", k); load(); };
+    d.append(btn); return d;
+  }));
+}
+$("block").onclick = async () => {
+  $("err").textContent = "";
+  const r = await post("/api/admin/block", { date: $("bDate").value, time: $("bTime").value });
+  if (!r.ok) $("err").textContent = (await r.json()).error;
+  load();
+};
+load();
+</script>
+</body>
+</html>

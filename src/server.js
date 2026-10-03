@@ -1,0 +1,183 @@
+import express from "express";
+import crypto from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf } from "./time.js";
+import { slotProblem, buildWeek } from "./slots.js";
+import { cleanFamily, normalizePhone, maskPhone, displayFamily } from "./people.js";
+import { buildIcs, googleCalendarUrl } from "./ics.js";
+import { smsConfigured } from "./sms.js";
+import { allTimes, slotTimesOn } from "./config.js";
+
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const sha = (s) => crypto.createHash("sha256").update(s).digest();
+const same = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
+
+export function createApp({ db, cfg, now = () => Date.now() }) {
+  const app = express();
+  app.disable("x-powered-by");
+  app.use(express.json({ limit: "10kb" }));
+  app.use((req, res, next) => {
+    res.set("X-Content-Type-Options", "nosniff");
+    // A booking link is a credential; keep it out of Referer headers.
+    res.set("Referrer-Policy", "no-referrer");
+    next();
+  });
+
+  const activeBookings = () => db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL`).all();
+  const blockedSet = () => new Set(db.prepare(`SELECT slot_date, slot_time FROM blocks`).all().map((r) => `${r.slot_date} ${r.slot_time}`));
+  const byToken = (t) => db.prepare(`SELECT * FROM bookings WHERE token = ?`).get(String(t));
+
+  // ---- public ---------------------------------------------------------
+  app.get("/healthz", (req, res) => { db.prepare("SELECT 1").get(); res.send("ok"); }); // Railway checks this before switching traffic
+  app.get("/api/config", (req, res) => {
+    res.json({
+      tz: cfg.tz, smsAvailable: smsConfigured(cfg), minutes: cfg.minutes,
+      missionaryPhone: cfg.missionaryPhone, helpName: cfg.helpName, helpPhone: cfg.helpPhone,
+    });
+  });
+
+  app.get("/api/week", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(buildWeek(cfg, now(), req.query.start, activeBookings(), blockedSet()));
+  });
+
+  // Slow down somebody hammering the booking endpoint; in-memory is plenty here.
+  const hits = new Map();
+  const limited = (ip) => {
+    const t = now();
+    const recent = (hits.get(ip) || []).filter((x) => t - x < 3600_000);
+    recent.push(t);
+    hits.set(ip, recent);
+    return recent.length > 20;
+  };
+
+  app.post("/api/book", (req, res) => {
+    if (limited(req.ip)) return res.status(429).json({ error: "Too many attempts. Please try again in a little while." });
+    const { date, time } = req.body || {};
+    const problem = slotProblem(cfg, date, time, now());
+    if (problem) return res.status(400).json({ error: problem });
+    const family = cleanFamily(req.body.family);
+    if (!family) return res.status(400).json({ error: "Please enter your family name." });
+    const phone = normalizePhone(req.body.phone);
+    if (!phone) return res.status(400).json({ error: "Please enter a 10-digit mobile number." });
+    if (blockedSet().has(`${date} ${time}`)) return res.status(409).json({ error: "That time is no longer available." });
+
+    const wantsText = smsConfigured(cfg);
+    const token = crypto.randomBytes(16).toString("base64url");
+    try {
+      db.prepare(
+        `INSERT INTO bookings (token, slot_date, slot_time, start_utc, family, phone, remind_day, remind_hour, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(token, date, time, zonedToUtc(date, time, cfg.tz), family, phone,
+        wantsText && req.body.remindDay === true ? 1 : 0,
+        wantsText && req.body.remindHour === true ? 1 : 0, now());
+    } catch (e) {
+      if (String(e.code).startsWith("SQLITE_CONSTRAINT")) {
+        return res.status(409).json({ error: "Someone just signed up for that time. Please pick another." });
+      }
+      throw e;
+    }
+    res.status(201).json({ token });
+  });
+
+  const present = (b) => ({
+    token: b.token,
+    family: displayFamily(b.family),
+    phone: maskPhone(b.phone),
+    dayLabel: fmtDay(b.slot_date, { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+    timeLabel: fmtTime(b.slot_time),
+    remindDay: !!b.remind_day,
+    remindHour: !!b.remind_hour,
+    cancelled: b.cancelled_at != null,
+    past: b.start_utc <= now(),
+    googleUrl: googleCalendarUrl(b, cfg),
+  });
+
+  app.get("/api/booking/:token", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const b = byToken(req.params.token);
+    if (!b) return res.status(404).json({ error: "We couldn't find that sign-up." });
+    res.json(present(b));
+  });
+
+  app.get("/api/booking/:token/ics", (req, res) => {
+    const b = byToken(req.params.token);
+    if (!b || b.cancelled_at != null) return res.status(404).send("Not found");
+    res.set({
+      "Content-Type": "text/calendar; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="missionary-visit.ics"',
+      "Cache-Control": "no-store",
+    });
+    res.send(buildIcs(b, cfg, now()));
+  });
+
+  app.post("/api/booking/:token/cancel", (req, res) => {
+    const b = byToken(req.params.token);
+    if (!b) return res.status(404).json({ error: "We couldn't find that sign-up." });
+    db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'family' WHERE id = ? AND cancelled_at IS NULL`).run(now(), b.id);
+    res.json({ ok: true });
+  });
+
+  // ---- admin ----------------------------------------------------------
+  // Off entirely until ADMIN_PASSWORD is set; one shared password, because the
+  // person running this is one ward mission leader, not a staff of people.
+  function requireAdmin(req, res, next) {
+    if (!cfg.adminPassword) return res.status(404).send("Not found");
+    const m = /^Basic (.+)$/.exec(req.get("authorization") || "");
+    const pass = m ? Buffer.from(m[1], "base64").toString().split(":").slice(1).join(":") : "";
+    if (m && same(pass, cfg.adminPassword)) return next();
+    res.set("WWW-Authenticate", 'Basic realm="Missionary visits admin"').status(401).send("Sign in required");
+  }
+
+  app.get("/admin", requireAdmin, (req, res) => res.sendFile(path.join(root, "private", "admin.html")));
+
+  app.get("/api/admin/state", requireAdmin, (req, res) => {
+    const t = now();
+    const bookings = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(t - 6 * 3600_000)
+      .map((b) => ({
+        id: b.id, family: displayFamily(b.family), phone: b.phone,
+        dayLabel: fmtDay(b.slot_date, { weekday: "short", month: "short", day: "numeric" }),
+        timeLabel: fmtTime(b.slot_time), remindDay: !!b.remind_day, remindHour: !!b.remind_hour, smsError: b.sms_error,
+      }));
+    const blocks = db.prepare(`SELECT * FROM blocks ORDER BY slot_date, slot_time`).all()
+      .filter((x) => x.slot_date >= todayInZone(t, cfg.tz))
+      .map((x) => ({ date: x.slot_date, time: x.slot_time, label: `${fmtDay(x.slot_date)} at ${fmtTime(x.slot_time)}` }));
+    res.json({ bookings, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg) });
+  });
+
+  app.post("/api/admin/cancel/:id", requireAdmin, (req, res) => {
+    db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'admin' WHERE id = ? AND cancelled_at IS NULL`).run(now(), Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/block", requireAdmin, (req, res) => {
+    const { date, time } = req.body || {};
+    if (!isDate(date) || !slotTimesOn(cfg, dowOf(date)).includes(time)) return res.status(400).json({ error: "Pick a date and a time." });
+    if (db.prepare(`SELECT 1 FROM bookings WHERE slot_date = ? AND slot_time = ? AND cancelled_at IS NULL`).get(date, time)) {
+      return res.status(409).json({ error: "A family has already signed up for that time. Cancel their visit first." });
+    }
+    db.prepare(`INSERT OR IGNORE INTO blocks (slot_date, slot_time) VALUES (?, ?)`).run(date, time);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/unblock", requireAdmin, (req, res) => {
+    const { date, time } = req.body || {};
+    db.prepare(`DELETE FROM blocks WHERE slot_date = ? AND slot_time = ?`).run(String(date), String(time));
+    res.json({ ok: true });
+  });
+
+  // ---- pages ----------------------------------------------------------
+  app.get("/b/:token", (req, res) => {
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    res.sendFile(path.join(root, "public", "booking.html"));
+  });
+  app.use(express.static(path.join(root, "public"), { index: "index.html" }));
+  app.use((req, res) => res.status(404).send("Not found"));
+  app.use((err, req, res, next) => {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  });
+  return app;
+}
