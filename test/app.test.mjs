@@ -209,3 +209,20 @@ test("missionary link: off without a key, secret-gated, shows phones, feeds a ca
   assert.equal(((await (await s.j("/api/m/sekret-key-123/visits")).json()).visits).length, 1);
   s.close();
 });
+
+test("ward permalinks jump to that ward's next week with an open time", async () => {
+  const s = await start();
+  const go = async (p) => { const r = await fetch(s.base + p, { redirect: "manual" }); return [r.status, r.headers.get("location")]; };
+  assert.deepEqual(await go("/SP"), [302, "/?start=2026-10-04"]);   // this week is Springwater's
+  assert.deepEqual(await go("/sp"), [302, "/?start=2026-10-04"]);   // case doesn't matter
+  assert.deepEqual(await go("/FF"), [302, "/?start=2026-10-25"]);
+  assert.deepEqual(await go("/OT"), [302, "/?start=2026-11-08"]);   // this week was OT's but is past; next is 6 weeks out
+  assert.deepEqual(await go("/HA"), [302, "/?start=2026-11-01"]);
+  assert.equal((await go("/ZZ"))[0], 404);
+
+  // Block every remaining time this week: Springwater's next open week is the next cycle.
+  const times = ["18:45", "19:30", "20:15", "10:00", "10:45", "15:00", "15:45"];
+  for (const d of ["04", "05", "06", "07", "08", "09", "10"]) for (const t of times) s.db.prepare("INSERT OR IGNORE INTO blocks (slot_date, slot_time) VALUES (?, ?)").run(`2026-10-${d}`, t);
+  assert.deepEqual(await go("/SP"), [302, "/?start=2026-11-15"]);
+  s.close();
+});

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf, sundayOf } from "./time.js";
-import { slotProblem, buildWeek, wardForWeek } from "./slots.js";
+import { slotProblem, buildWeek, wardForWeek, nextWardWeek } from "./slots.js";
 import { cleanFamily, normalizePhone, maskPhone, displayFamily, formatPhone } from "./people.js";
 import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
@@ -209,6 +209,13 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
   app.get("/b/:token", (req, res) => {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
     res.sendFile(path.join(root, "public", "booking.html"));
+  });
+  // Permalinks: /SP, /FF, /OT, ... jump to that ward's next week with an open time.
+  app.get(/^\/([A-Za-z]{2})$/, (req, res, next) => {
+    const ward = cfg.wardCodes[req.params[0].toUpperCase()];
+    if (!ward) return next();
+    const start = nextWardWeek(cfg, now(), ward, activeBookings(), blockedSet());
+    res.set("Cache-Control", "no-store").redirect(302, start ? `/?start=${start}` : "/");
   });
   app.use(express.static(path.join(root, "public"), { index: "index.html", extensions: ["html"] }));
   app.use((req, res) => res.status(404).send("Not found"));

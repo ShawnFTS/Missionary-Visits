@@ -63,3 +63,15 @@ export function buildWeek(cfg, nowMs, startParam, bookings, blocked) {
     days,
   };
 }
+
+// First Sunday-start week, from this week on, that belongs to `ward` and still has an open time.
+export function nextWardWeek(cfg, nowMs, ward, bookings, blocked) {
+  let start = sundayOf(todayInZone(nowMs, cfg.tz));
+  const last = sundayOf(windowEnd(cfg));
+  for (; start <= last; start = addDays(start, 7)) {
+    if (wardForWeek(cfg, start) !== ward) continue;
+    const week = buildWeek(cfg, nowMs, start, bookings, blocked);
+    if (week.days.some((d) => d.slots.some((s) => s.status === "open"))) return start;
+  }
+  return null;
+}

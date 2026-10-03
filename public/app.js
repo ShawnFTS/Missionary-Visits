@@ -109,7 +109,8 @@
     if (c.helpPhone) add(`Trouble with this page? ${c.helpName || "Call"} `, c.helpPhone);
     $("reminders").hidden = !smsAvailable;
   });
-  load();
+  const wanted = new URLSearchParams(location.search).get("start");
+  load(/^\d{4}-\d{2}-\d{2}$/.test(wanted || "") ? wanted : undefined);
   // Keep the sheet honest if it's left open: families sign up all day.
   setInterval(() => { if (!dlg.open && state) load(state.weekStart); }, 60_000);
 })();
