@@ -2,10 +2,10 @@ import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf } from "./time.js";
-import { slotProblem, buildWeek } from "./slots.js";
-import { cleanFamily, normalizePhone, maskPhone, displayFamily } from "./people.js";
-import { buildIcs, googleCalendarUrl } from "./ics.js";
+import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf, sundayOf } from "./time.js";
+import { slotProblem, buildWeek, wardForWeek } from "./slots.js";
+import { cleanFamily, normalizePhone, maskPhone, displayFamily, formatPhone } from "./people.js";
+import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
 import { allTimes, slotTimesOn } from "./config.js";
 
@@ -118,6 +118,43 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     if (!b) return res.status(404).json({ error: "We couldn't find that sign-up." });
     db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'family' WHERE id = ? AND cancelled_at IS NULL`).run(now(), b.id);
     res.json({ ok: true });
+  });
+
+  // ---- missionaries ---------------------------------------------------
+  // A private link, /m/<key>: the one place phone numbers are shown outside admin.
+  // Off entirely until MISSIONARY_KEY is set. The key is the only credential.
+  const upcoming = () => db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(now() - 3 * 3600_000);
+  const wardOf = (b) => wardForWeek(cfg, sundayOf(b.slot_date));
+  function requireKey(req, res, next) {
+    if (!cfg.missionaryKey || !same(String(req.params.key), cfg.missionaryKey)) return res.status(404).send("Not found");
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    next();
+  }
+  const calHeaders = (res, name) => res.set({ "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `inline; filename="${name}"` });
+
+  app.get("/m/:key", requireKey, (req, res) => res.sendFile(path.join(root, "private", "missionaries.html")));
+
+  app.get("/api/m/:key/visits", requireKey, (req, res) => {
+    res.json({
+      visits: upcoming().map((b) => ({
+        id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), ward: wardOf(b),
+        dayLabel: fmtDay(b.slot_date, { weekday: "long", month: "short", day: "numeric" }), timeLabel: fmtTime(b.slot_time),
+        week: sundayOf(b.slot_date),
+      })),
+    });
+  });
+
+  // ?ids=1,2,3 for a picked set; no ids = everything upcoming.
+  app.get("/api/m/:key/visits.ics", requireKey, (req, res) => {
+    const ids = req.query.ids ? new Set(String(req.query.ids).split(",").map(Number).filter(Number.isInteger)) : null;
+    const list = upcoming().filter((b) => !ids || ids.has(b.id));
+    calHeaders(res, "missionary-visits.ics").set("Content-Disposition", 'attachment; filename="missionary-visits.ics"');
+    res.send(buildMissionaryIcs(list, cfg, wardOf, now()));
+  });
+
+  // Subscribe once (webcal://…/m/<key>/feed.ics); new and cancelled visits follow automatically.
+  app.get("/m/:key/feed.ics", requireKey, (req, res) => {
+    calHeaders(res, "feed.ics").send(buildMissionaryIcs(upcoming(), cfg, wardOf, now()));
   });
 
   // ---- admin ----------------------------------------------------------

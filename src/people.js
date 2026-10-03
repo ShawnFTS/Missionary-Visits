@@ -18,3 +18,7 @@ export function normalizePhone(raw) {
 
 export const maskPhone = (e164) => `(•••) •••-${e164.slice(-4)}`;
 export const displayFamily = (f) => `${f} Family`;
+export const formatPhone = (e164) => {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+};

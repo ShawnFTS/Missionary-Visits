@@ -1,7 +1,7 @@
 import { compactUtc } from "./time.js";
-import { displayFamily } from "./people.js";
+import { displayFamily, formatPhone } from "./people.js";
 
-const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 
 // RFC 5545: lines over 75 octets are folded with CRLF + space.
 function fold(line) {
@@ -58,4 +58,44 @@ export function googleCalendarUrl(b, cfg) {
     details: "The full-time missionaries are visiting your home.",
   });
   return `https://calendar.google.com/calendar/render?${q}`;
+}
+
+// The missionaries' calendar: every visit they are hosted at, with the family's
+// phone number in the details. One VEVENT per booking; also served as a live feed.
+export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now()) {
+  const alarm = (trigger, text) => [
+    "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(text)}`, `TRIGGER:${trigger}`, "END:VALARM",
+  ];
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Eagle Mountain West Stake//Missionary Member Visits//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:Missionary visits",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    "X-PUBLISHED-TTL:PT1H",
+  ];
+  for (const b of bookings) {
+    const ward = wardOf(b);
+    const desc = [
+      `Family: ${displayFamily(b.family)}`,
+      `Phone: ${formatPhone(b.phone)}`,
+      ward ? `Ward: ${ward}` : null,
+    ].filter(Boolean).join("\n");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:mvisit-${b.token}@missionary-visits`,
+      `DTSTAMP:${compactUtc(nowMs)}`,
+      `DTSTART:${compactUtc(b.start_utc)}`,
+      `DTEND:${compactUtc(bookingEnd(b, cfg.minutes))}`,
+      `SUMMARY:${esc(`Visit — ${displayFamily(b.family)}`)}`,
+      `DESCRIPTION:${esc(desc)}`,
+      "STATUS:CONFIRMED",
+      ...alarm("-PT1H", "Visit in 1 hour"),
+      "END:VEVENT",
+    );
+  }
+  lines.push("END:VCALENDAR");
+  return lines.map(fold).join("\r\n") + "\r\n";
 }

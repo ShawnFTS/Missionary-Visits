@@ -169,3 +169,43 @@ test("admin: closed without a password, gated with one, can block and cancel", a
   assert.equal((await t.j("/admin", null, auth)).status, 200);
   t.close();
 });
+
+test("missionary link: off without a key, secret-gated, shows phones, feeds a calendar", async () => {
+  const off = await start();
+  assert.equal((await off.j("/api/m/anything/visits")).status, 404);
+  off.close();
+
+  const s = await start({ missionaryKey: "sekret-key-123" });
+  await s.j("/api/book", { date: "2026-10-08", time: "19:30", family: "Smith", phone: "(801) 555-0123" });
+  const b2 = await (await s.j("/api/book", { date: "2026-10-09", time: "10:00", family: "Lee; Jr", phone: "801-555-0199" })).json();
+  assert.ok(b2.token);
+
+  assert.equal((await s.j("/api/m/wrong/visits")).status, 404);
+  assert.equal((await fetch(s.base + "/m/wrong")).status, 404);
+  assert.equal((await fetch(s.base + "/m/sekret-key-123")).status, 200);
+
+  const { visits } = await (await s.j("/api/m/sekret-key-123/visits")).json();
+  assert.equal(visits.length, 2);
+  assert.equal(visits[0].phone, "(801) 555-0123");
+  assert.equal(visits[0].ward, "Springwater");
+
+  // The public week never carries a phone number.
+  assert.ok(!JSON.stringify(await (await s.j("/api/week?start=2026-10-04")).json()).includes("555"));
+
+  const all = await (await s.j("/api/m/sekret-key-123/visits.ics")).text();
+  assert.equal((all.match(/BEGIN:VEVENT/g) || []).length, 2);
+  assert.match(all, /Phone: \(801\) 555-0123/);
+  assert.match(all, /Ward: Springwater/);
+
+  const one = await (await s.j(`/api/m/sekret-key-123/visits.ics?ids=${visits[1].id}`)).text();
+  assert.equal((one.match(/BEGIN:VEVENT/g) || []).length, 1);
+  assert.ok(one.includes("Lee\\; Jr Family"));
+
+  const feed = await s.j("/m/sekret-key-123/feed.ics");
+  assert.match(feed.headers.get("content-type"), /text\/calendar/);
+  assert.match(await feed.text(), /X-WR-CALNAME:Missionary visits/);
+
+  await s.j(`/api/booking/${b2.token}/cancel`, {});
+  assert.equal(((await (await s.j("/api/m/sekret-key-123/visits")).json()).visits).length, 1);
+  s.close();
+});

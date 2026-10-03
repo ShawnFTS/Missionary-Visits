@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Missionary Visits — Missionaries</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .wk { margin: 18px 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .wk h3 { margin: 0; font-family: Georgia, serif; font-size: 1.1rem; }
+  .wk button { font: inherit; font-size: .85rem; background: none; border: 0; color: var(--navy-2); text-decoration: underline; cursor: pointer; padding: 4px; }
+  .v { display: flex; gap: 12px; align-items: center; padding: 10px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+  .v input { width: 24px; height: 24px; accent-color: var(--navy); flex: none; }
+  .v .when { margin: 0; font-weight: 600; color: var(--ink); }
+  .v .who { margin: 0; color: var(--muted); }
+  .v .who a { color: var(--navy-2); font-weight: 600; }
+  .bar { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .sub { display: grid; gap: 8px; }
+  .sub input { width: 100%; font: inherit; font-size: 14px; padding: 10px; border: 1.5px solid #c9c2b2; border-radius: 10px; background: #fff; color: var(--ink); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header class="hero small-hero"><div class="hero-inner"><h1>Missionary Visits</h1></div></header>
+<main>
+  <section class="panel">
+    <h2 class="serif">Stay up to date automatically</h2>
+    <p class="fine">Subscribe once and every new visit shows up on your calendar, with the family's name and phone number. Cancelled visits disappear.</p>
+    <div class="sub">
+      <div class="row">
+        <a class="btn" id="subApple" href="#">Subscribe (iPhone / Mac)</a>
+        <a class="btn ghost" id="subGoogle" href="#" target="_blank" rel="noopener">Subscribe (Google Calendar)</a>
+      </div>
+      <p class="fine" style="margin:0">Or paste this address into any calendar app's “subscribe to calendar from URL”:</p>
+      <div class="row"><input id="feedUrl" readonly><button class="btn ghost" id="copy">Copy</button></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="serif">Pick visits to add</h2>
+    <p class="fine">Check the visits you want, then use the button at the bottom. This adds a copy to your calendar; it won't update if plans change (subscribing above does).</p>
+    <div class="row"><button class="btn ghost" id="all">Select all</button><button class="btn ghost" id="none">Clear</button></div>
+    <div id="list"><p>Loading…</p></div>
+  </section>
+</main>
+<div class="bar">
+  <span id="count">0 selected</span>
+  <button class="btn" id="add" disabled>Add selected to my calendar</button>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const key = location.pathname.split("/")[2];
+const feed = `${location.origin}/m/${key}/feed.ics`;
+$("feedUrl").value = feed;
+$("subApple").href = feed.replace(/^https?:/, "webcal:");
+$("subGoogle").href = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(feed.replace(/^https?:/, "webcal:"));
+$("copy").onclick = async () => { try { await navigator.clipboard.writeText(feed); $("copy").textContent = "Copied"; } catch { $("feedUrl").select(); } };
+
+const boxes = () => [...document.querySelectorAll(".v input")];
+const update = () => {
+  const n = boxes().filter((b) => b.checked).length;
+  $("count").textContent = `${n} selected`;
+  $("add").disabled = n === 0;
+};
+const setAll = (on, only) => { boxes().filter((b) => !only || b.dataset.week === only).forEach((b) => { b.checked = on; }); update(); };
+$("all").onclick = () => setAll(true);
+$("none").onclick = () => setAll(false);
+$("add").onclick = () => {
+  const ids = boxes().filter((b) => b.checked).map((b) => b.value).join(",");
+  location.href = `/api/m/${key}/visits.ics?ids=${ids}`;
+};
+
+(async () => {
+  const r = await fetch(`/api/m/${key}/visits`);
+  if (!r.ok) { $("list").textContent = "Couldn't load visits."; return; }
+  const { visits } = await r.json();
+  if (!visits.length) { $("list").textContent = "No visits booked yet."; return; }
+  const weeks = new Map();
+  for (const v of visits) { if (!weeks.has(v.week)) weeks.set(v.week, []); weeks.get(v.week).push(v); }
+  const frag = document.createDocumentFragment();
+  for (const [wk, list] of weeks) {
+    const head = document.createElement("div"); head.className = "wk";
+    const h = document.createElement("h3"); h.textContent = list[0].ward ? `${list[0].ward} Ward` : "Week of " + wk;
+    const sel = document.createElement("button"); sel.type = "button"; sel.textContent = "Select this week";
+    sel.onclick = () => setAll(true, wk);
+    head.append(h, sel); frag.append(head);
+    for (const v of list) {
+      const label = document.createElement("label"); label.className = "v";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = v.id; cb.dataset.week = wk; cb.onchange = update;
+      const txt = document.createElement("div");
+      const when = document.createElement("p"); when.className = "when"; when.textContent = `${v.dayLabel} · ${v.timeLabel}`;
+      const who = document.createElement("p"); who.className = "who"; who.append(v.family + " · ");
+      const a = document.createElement("a"); a.href = "tel:" + v.phone.replace(/\D/g, ""); a.textContent = v.phone;
+      a.onclick = (e) => e.stopPropagation();
+      who.append(a); txt.append(when, who); label.append(cb, txt); frag.append(label);
+    }
+  }
+  $("list").replaceChildren(frag); update();
+})();
+</script>
+</body>
+</html>
