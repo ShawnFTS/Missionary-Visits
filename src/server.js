@@ -8,6 +8,10 @@ import { cleanFamily, normalizePhone, maskPhone, displayFamily, cleanAddress, fo
 import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
 import * as analytics from "./analytics.js";
+import * as settings from "./settings.js";
+import { notifyMissionaries } from "./notify.js";
+import { mailConfigured, makeMailer } from "./mail.js";
+import { makeTwilioSender } from "./sms.js";
 import { allTimes, slotTimesOn } from "./config.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,7 +19,15 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (s) => crypto.createHash("sha256").update(s).digest();
 const same = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
 
-export function createApp({ db, cfg, now = () => Date.now() }) {
+export function createApp({ db, cfg, now = () => Date.now(), sendEmail, sendSms }) {
+  settings.loadStored(db, cfg); // saved admin settings win over env defaults
+  // Injected in tests; otherwise real senders when configured, null (inert) when not.
+  sendEmail = sendEmail !== undefined ? sendEmail : mailConfigured(cfg) ? makeMailer(cfg) : null;
+  sendSms = sendSms !== undefined ? sendSms : smsConfigured(cfg) ? makeTwilioSender(cfg) : null;
+  const tell = (kind, booking, by) => {
+    if (kind === "cancel" && booking.start_utc <= now()) return; // nobody needs to hear about a past visit
+    notifyMissionaries({ db, cfg, sendEmail, sendSms, now }, kind, booking, by).catch((e) => console.error("[notify]", e));
+  };
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "10kb" }));
@@ -104,6 +116,7 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     if (limited(req.ip)) return res.status(429).json({ error: "Too many attempts. Please try again in a little while." });
     const r = createBooking(req.body, { allowReminders: true });
     if (r.error) return res.status(r.status).json({ error: r.error });
+    tell("signup", byToken(r.token), "family");
     const id = analytics.readCookie(req, "mv");
     if (/^[\w-]{10,32}$/.test(id) && id !== "off") analytics.record(db, { kind: "signup", visitor: id, ua: req.get("user-agent"), now: now() });
     res.status(201).json({ token: r.token });
@@ -143,7 +156,8 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
   app.post("/api/booking/:token/cancel", (req, res) => {
     const b = byToken(req.params.token);
     if (!b) return res.status(404).json({ error: "We couldn't find that sign-up." });
-    db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'family' WHERE id = ? AND cancelled_at IS NULL`).run(now(), b.id);
+    const done = db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'family' WHERE id = ? AND cancelled_at IS NULL`).run(now(), b.id);
+    if (done.changes === 1) tell("cancel", b, "family"); // once: pressing Cancel twice must not text them twice
     res.json({ ok: true });
   });
 
@@ -246,8 +260,68 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
 
   app.get("/api/admin/stats", requireAdmin, (req, res) => res.json(analytics.stats(db, cfg, now())));
 
+  // ---- settings: schedule, rotation, contact info ----------------------
+  app.get("/api/admin/settings", requireAdmin, (req, res) => res.json(settings.editableView(cfg)));
+  app.post("/api/admin/settings", requireAdmin, (req, res) => {
+    const r = settings.save(db, cfg, req.body || {}, now());
+    if (r.errors) return res.status(400).json({ errors: r.errors });
+    res.json({ ok: true, warnings: r.warnings, settings: settings.editableView(cfg) });
+  });
+
+  // ---- who is told about cancellations ---------------------------------
+  const contactRow = (c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone ? formatPhone(c.phone) : "", sms: !!c.sms, notifyCancel: !!c.notify_cancel, notifySignup: !!c.notify_signup });
+  app.get("/api/admin/contacts", requireAdmin, (req, res) => {
+    const log = db.prepare(`SELECT * FROM notification_log ORDER BY id DESC LIMIT 25`).all().map((l) => ({
+      when: new Date(l.ts).toLocaleString("en-US", { timeZone: cfg.tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+      kind: l.kind, who: l.contact_name, channel: l.channel, ok: !!l.ok, error: l.error,
+    }));
+    res.json({
+      contacts: db.prepare(`SELECT * FROM missionary_contacts WHERE active = 1 ORDER BY name`).all().map(contactRow),
+      emailReady: !!sendEmail, textReady: !!sendSms, log,
+    });
+  });
+  app.post("/api/admin/contacts", requireAdmin, (req, res) => {
+    const b = req.body || {};
+    const name = String(b.name ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, 60);
+    const email = String(b.email ?? "").trim().toLowerCase();
+    const phone = b.phone ? normalizePhone(b.phone) : null;
+    if (!name) return res.status(400).json({ error: "Enter a name." });
+    if (email && (email.length > 120 || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email))) return res.status(400).json({ error: "That email address doesn't look right." });
+    if (b.phone && !phone) return res.status(400).json({ error: "Enter a 10-digit mobile number, or leave it blank." });
+    if (!email && !(phone && b.sms)) return res.status(400).json({ error: "Add an email address, or a mobile number with \"text me too\" ticked, so there's a way to reach them." });
+    const dupe = email && db.prepare(`SELECT id FROM missionary_contacts WHERE active = 1 AND lower(email) = ? AND id != ?`).get(email, Number(b.id) || 0);
+    if (dupe) return res.status(409).json({ error: "That email is already on the list." });
+    const vals = [name, email || null, phone, b.sms ? 1 : 0, b.notifyCancel === false ? 0 : 1, b.notifySignup ? 1 : 0];
+    if (b.id) {
+      const done = db.prepare(`UPDATE missionary_contacts SET name=?, email=?, phone=?, sms=?, notify_cancel=?, notify_signup=? WHERE id = ? AND active = 1`).run(...vals, Number(b.id));
+      if (!done.changes) return res.status(404).json({ error: "That person isn't on the list any more." });
+    } else {
+      db.prepare(`INSERT INTO missionary_contacts (name, email, phone, sms, notify_cancel, notify_signup, created_at) VALUES (?,?,?,?,?,?,?)`).run(...vals, now());
+    }
+    res.json({ ok: true });
+  });
+  app.post("/api/admin/contacts/:id/remove", requireAdmin, (req, res) => {
+    db.prepare(`UPDATE missionary_contacts SET active = 0 WHERE id = ?`).run(Number(req.params.id));
+    res.json({ ok: true });
+  });
+  // A harmless test message so setup can be checked without cancelling a real visit.
+  app.post("/api/admin/contacts/:id/test", requireAdmin, async (req, res) => {
+    const c = db.prepare(`SELECT * FROM missionary_contacts WHERE id = ? AND active = 1`).get(Number(req.params.id));
+    if (!c) return res.status(404).json({ error: "Not found." });
+    const results = [];
+    const tryIt = async (channel, run) => {
+      if (!run) return results.push(`${channel}: not set up yet`);
+      try { await run(); results.push(`${channel}: sent`); } catch (e) { results.push(`${channel}: failed — ${e.message}`); }
+    };
+    if (c.email) await tryIt("email", sendEmail && (() => sendEmail({ to: c.email, subject: "Test: Missionary Visits notifications", text: "This is a test. You'll get a message like this when a visit is cancelled." })));
+    if (c.sms && c.phone) await tryIt("text", sendSms && (() => sendSms(c.phone, "Test from Missionary Visits: you'll get a text like this when a visit is cancelled.")));
+    res.json({ results });
+  });
+
   app.post("/api/admin/cancel/:id", requireAdmin, (req, res) => {
-    db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'admin' WHERE id = ? AND cancelled_at IS NULL`).run(now(), Number(req.params.id));
+    const b = db.prepare(`SELECT * FROM bookings WHERE id = ?`).get(Number(req.params.id));
+    const done = db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'admin' WHERE id = ? AND cancelled_at IS NULL`).run(now(), Number(req.params.id));
+    if (b && done.changes === 1) tell("cancel", b, "admin");
     res.json({ ok: true });
   });
 

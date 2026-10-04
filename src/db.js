@@ -40,6 +40,19 @@ export function openDb(dir) {
       device TEXT, os TEXT, browser TEXT, src TEXT, ref TEXT
     );
     CREATE INDEX IF NOT EXISTS ix_events_ts ON events(ts);
+    -- Admin-editable settings (schedule, rotation, contact info). Env vars are the defaults;
+    -- whatever is saved here wins and is applied live, no redeploy.
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    -- Who is told when a visit is cancelled (or booked). Deactivated, never deleted: the log refers to them.
+    CREATE TABLE IF NOT EXISTS missionary_contacts (
+      id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT, phone TEXT,
+      sms INTEGER NOT NULL DEFAULT 0, notify_cancel INTEGER NOT NULL DEFAULT 1, notify_signup INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS notification_log (
+      id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, booking_id INTEGER,
+      contact_id INTEGER, contact_name TEXT, channel TEXT NOT NULL, ok INTEGER NOT NULL, error TEXT
+    );
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,

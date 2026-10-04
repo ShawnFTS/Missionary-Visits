@@ -41,7 +41,8 @@ export function buildWeek(cfg, nowMs, startParam, bookings, blocked) {
       label: fmtDay(date, { weekday: "short" }),
       sub: fmtDay(date, { month: "short", day: "numeric" }),
       isToday: date === today,
-      slots: slotTimesOn(cfg, dowOf(date)).map((time) => {
+      // Union with already-booked times: changing the schedule must never hide a family's visit.
+      slots: [...new Set([...slotTimesOn(cfg, dowOf(date)), ...bookings.filter((b) => b.slot_date === date).map((b) => b.slot_time)])].sort().map((time) => {
         const key = `${date} ${time}`;
         const b = byKey.get(key);
         let status = "open";

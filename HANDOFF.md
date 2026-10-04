@@ -37,9 +37,22 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
   Privacy policy updated to say so. DB gained an `events` table and a `bookings.address` column (both additive).
 - 16 tests pass.
 
+## Settings backend + cancellation notices (latest session)
+- `/admin` → **Settings**: schedule per day, visit length, ward list/start Sunday/cycles, contact info. Stored in the
+  `settings` table (JSON overrides on top of env defaults), applied live, validated (start must be a Sunday, times need
+  AM/PM, etc.). A booked visit always stays visible even if its time leaves the schedule; warnings say so after saving.
+- `/admin` → **Missionaries**: contacts table (`missionary_contacts`: name, email, optional mobile, "text too", notify on
+  cancel / on new sign-up). On a cancel (family link or admin) every active contact with that flag is emailed
+  (Resend) and optionally texted (Twilio); once per cancellation, skipped for visits already in the past; every
+  attempt is logged in `notification_log` and shown on that tab; failures never affect the cancel. The slot reopens for
+  others immediately (it always did). "Send test" button checks each contact.
+- **Email is not set up yet**: needs a Resend account + verified domain, then Railway vars `RESEND_API_KEY` and
+  `MAIL_FROM`. Texting to missionaries also waits on Twilio's toll-free approval.
+- 25 tests pass.
+
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
-`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `RESEND_API_KEY`, `MAIL_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.
 
 ## Deploying
 Pushing to GitHub does **not** auto-deploy this service. After `git push`, run `railway up -s web -d` from this folder

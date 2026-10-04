@@ -12,7 +12,7 @@ const DEFAULT_SCHEDULE = {
 
 // Short permalink codes for each ward (/SP, /FF, ...). Override with WARD_CODES="HA=Harmony,OT=Overland Trails".
 const DEFAULT_CODES = { HA: "Harmony", OT: "Overland Trails", SP: "Springwater", WH: "White Hills", CF: "Cedar Fort", FF: "Fairfield" };
-function wardCodes(wards, raw) {
+export function wardCodes(wards, raw) {
   const out = {};
   if (raw) for (const part of raw.split(",")) { const [k, ...v] = part.split("="); if (k && v.length) out[k.trim().toUpperCase()] = v.join("=").trim(); }
   else {
@@ -52,6 +52,8 @@ export function loadConfig(env = process.env) {
     adminPassword: env.ADMIN_PASSWORD || "",
     // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
     missionaryKey: env.MISSIONARY_KEY || "",
+    // Email to the missionaries (Resend). Inert until both are set.
+    mail: { apiKey: env.RESEND_API_KEY || "", from: env.MAIL_FROM || "" },
     dataDir: env.DATA_DIR || "./data",
     selfUrl: (env.SELF_URL || "").replace(/\/$/, ""),
     twilio: {
@@ -61,6 +63,7 @@ export function loadConfig(env = process.env) {
       service: env.TWILIO_MESSAGING_SERVICE_SID || "",
     },
   };
-  cfg.wardCodes = wardCodes(cfg.wards, env.WARD_CODES);
+  cfg.wardCodesRaw = env.WARD_CODES || "";
+  cfg.wardCodes = wardCodes(cfg.wards, cfg.wardCodesRaw);
   return cfg;
 }

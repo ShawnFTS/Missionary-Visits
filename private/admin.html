@@ -34,6 +34,8 @@
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="visits" aria-selected="true">Visits</button>
     <button role="tab" data-tab="cal" aria-selected="false">Missionary calendar</button>
+    <button role="tab" data-tab="contacts" aria-selected="false">Missionaries</button>
+    <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="stats" aria-selected="false">Visitors</button>
   </div>
 
@@ -105,6 +107,80 @@
         <div class="msg" id="msg"></div>
         <p><button class="btn small" id="copyMsg">Copy message</button></p>
       </div>
+    </section>
+  </div>
+
+  <!-- ===== Missionaries (who gets told) ===== -->
+  <div data-pane="contacts" hidden>
+    <section class="panel">
+      <h2 class="serif">Missionaries to notify</h2>
+      <p>Everyone listed here is told <strong>right away when a visit is cancelled</strong>, with the family's name, time, phone and address. The time then opens up on the sign-up page for another family. You can also choose to hear about new sign-ups.</p>
+      <p id="chanStatus" class="fine"></p>
+      <details id="emailHelp" class="fine"><summary><strong>How to turn email on</strong></summary>
+        <ol class="steps">
+          <li>Create a free account at <strong>resend.com</strong> and add your domain (missionaryvisits.com). They show a few DNS records; add them at GoDaddy.</li>
+          <li>In Resend create an API key.</li>
+          <li>In Railway → Variables add <code>RESEND_API_KEY</code> (the key) and <code>MAIL_FROM</code> such as <code>Missionary Visits &lt;visits@missionaryvisits.com&gt;</code>, then redeploy.</li>
+        </ol>
+        Texts use the same Twilio number as the family reminders.
+      </details>
+      <div id="contactList" class="wide-tbl" style="margin-top:12px"></div>
+    </section>
+    <section class="panel">
+      <h2 class="serif" id="cFormTitle">Add a missionary</h2>
+      <div class="inline">
+        <label>Name<br><input id="cName" placeholder="Elder Jones"></label>
+        <label>Email<br><input id="cEmail" type="email" placeholder="elder.jones@missionary.org"></label>
+        <label>Mobile (optional)<br><input id="cPhone" type="tel" placeholder="385-233-7693"></label>
+      </div>
+      <p>
+        <label class="check"><input type="checkbox" id="cCancel" checked> Tell them about <strong>cancellations</strong></label>
+        <label class="check"><input type="checkbox" id="cSignup"> Tell them about <strong>new sign-ups</strong></label>
+        <label class="check"><input type="checkbox" id="cSms"> Text them too (needs a mobile number)</label>
+      </p>
+      <p class="inline"><button class="btn" id="cSave">Save</button><button class="btn ghost" id="cReset" hidden>Cancel editing</button></p>
+      <p class="err" id="cErr"></p>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="font-size:1.05rem">Recent notifications</h2>
+      <div id="notifLog" class="wide-tbl"></div>
+    </section>
+  </div>
+
+  <!-- ===== Settings ===== -->
+  <div data-pane="settings" hidden>
+    <section class="panel">
+      <h2 class="serif">Schedule</h2>
+      <p class="fine">The times families can pick each day. Write times like <em>7:30 PM, 8:15 PM</em>, and leave a day blank for no visits. <strong>Changing this never moves or cancels a family who already signed up.</strong></p>
+      <div id="schedRows"></div>
+      <label style="display:block;margin-top:10px">Length of a visit (minutes)<br><input id="sMinutes" type="number" min="15" max="240" style="width:100px"></label>
+      <p class="inline"><button class="btn" id="saveSched">Save schedule</button></p>
+      <p class="err" id="schedMsg"></p>
+    </section>
+    <section class="panel">
+      <h2 class="serif">Ward rotation</h2>
+      <p class="fine">Each Sunday–Saturday week belongs to the next ward in this list, then it starts over. Wards one per line, in order.</p>
+      <div class="inline">
+        <label>Wards (one per line)<br><textarea id="sWards" rows="7" style="min-width:220px;padding:10px;font:inherit;border:1.5px solid #c9c2b2;border-radius:10px"></textarea></label>
+        <div>
+          <label>First week starts (a Sunday)<br><input type="date" id="sStart"></label><br><br>
+          <label>Times through the list<br><input type="number" id="sCycles" min="1" max="20" style="width:100px"></label>
+        </div>
+      </div>
+      <p class="fine" id="sEnds"></p>
+      <p class="inline"><button class="btn" id="saveRot">Save rotation</button></p>
+      <p class="err" id="rotMsg"></p>
+      <details><summary class="fine"><strong>See every week</strong></summary><div id="weeksList" class="wide-tbl" style="max-height:320px;overflow:auto"></div></details>
+    </section>
+    <section class="panel">
+      <h2 class="serif">Contact info on the page</h2>
+      <div class="inline">
+        <label>Missionaries' phone<br><input id="sMPhone"></label>
+        <label>Help contact name<br><input id="sHName"></label>
+        <label>Help contact phone<br><input id="sHPhone"></label>
+      </div>
+      <p class="inline"><button class="btn" id="saveContact">Save</button></p>
+      <p class="err" id="contactMsg"></p>
     </section>
   </div>
 
@@ -228,6 +304,87 @@ async function loadStats() {
   bars("referrers", s.referrers); bars("sources", s.sources);
 }
 load();
+</script>
+<script>
+// ---- Missionaries tab + Settings tab --------------------------------------
+const okMsg = (id, text, good = true) => { const e = $(id); e.textContent = text; e.style.color = good ? "var(--open)" : "var(--danger)"; };
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.tab === "contacts") loadContacts();
+  if (b.dataset.tab === "settings") loadSettings();
+}));
+
+let editingId = null;
+async function loadContacts() {
+  const d = await (await fetch("/api/admin/contacts")).json();
+  $("chanStatus").textContent = `Email: ${d.emailReady ? "✓ set up" : "✗ not set up yet"}  ·  Text: ${d.textReady ? "✓ set up" : "✗ not set up yet"}`;
+  $("emailHelp").open = !d.emailReady;
+  const box = $("contactList"); box.replaceChildren();
+  if (!d.contacts.length) box.textContent = "No one yet — add the missionaries below.";
+  else {
+    const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Email</th><th>Mobile</th><th>Told about</th><th></th></tr>"; box.append(t);
+    for (const c of d.contacts) {
+      const tr = el("tr"); cell(tr, c.name); cell(tr, c.email || "—"); cell(tr, (c.phone || "—") + (c.sms ? " (texts)" : ""));
+      cell(tr, [c.notifyCancel && "cancellations", c.notifySignup && "new sign-ups"].filter(Boolean).join(", ") || "nothing");
+      const td = el("td"); td.style.whiteSpace = "nowrap";
+      const test = el("button", "btn ghost small", "Send test"); test.onclick = async () => { test.disabled = true; const r = await (await post(`/api/admin/contacts/${c.id}/test`)).json(); alert((r.results || [r.error]).join("\n")); test.disabled = false; loadContacts(); };
+      const edit = el("button", "btn ghost small", "Edit"); edit.onclick = () => startEdit(c);
+      const rm = el("button", "btn danger small", "Remove"); rm.onclick = async () => { if (confirm(`Remove ${c.name}? They will stop getting notifications.`)) { await post(`/api/admin/contacts/${c.id}/remove`); loadContacts(); } };
+      td.append(test, " ", edit, " ", rm); tr.append(td); t.append(tr);
+    }
+  }
+  const lg = $("notifLog"); lg.replaceChildren();
+  if (!d.log.length) lg.textContent = "Nothing sent yet.";
+  else {
+    const t = el("table"); t.innerHTML = "<tr><th>When</th><th>What</th><th>To</th><th>How</th><th>Result</th></tr>"; lg.append(t);
+    for (const l of d.log) { const tr = el("tr"); cell(tr, l.when); cell(tr, l.kind === "cancel" ? "Cancellation" : "New sign-up"); cell(tr, l.who); cell(tr, l.channel); cell(tr, l.ok ? "✓ sent" : "✗ " + (l.error || "failed")); t.append(tr); }
+  }
+}
+function startEdit(c) {
+  editingId = c.id; $("cFormTitle").textContent = "Edit " + c.name; $("cReset").hidden = false;
+  $("cName").value = c.name; $("cEmail").value = c.email || ""; $("cPhone").value = c.phone || "";
+  $("cCancel").checked = c.notifyCancel; $("cSignup").checked = c.notifySignup; $("cSms").checked = c.sms; $("cName").focus();
+}
+function resetContactForm() {
+  editingId = null; $("cFormTitle").textContent = "Add a missionary"; $("cReset").hidden = true;
+  for (const id of ["cName", "cEmail", "cPhone"]) $(id).value = ""; $("cCancel").checked = true; $("cSignup").checked = false; $("cSms").checked = false; $("cErr").textContent = "";
+}
+$("cReset").onclick = resetContactForm;
+$("cSave").onclick = async () => {
+  $("cErr").textContent = "";
+  const r = await post("/api/admin/contacts", { id: editingId, name: $("cName").value, email: $("cEmail").value, phone: $("cPhone").value, sms: $("cSms").checked, notifyCancel: $("cCancel").checked, notifySignup: $("cSignup").checked });
+  if (!r.ok) { $("cErr").textContent = (await r.json()).error; return; }
+  resetContactForm(); loadContacts();
+};
+
+async function loadSettings() {
+  const s = await (await fetch("/api/admin/settings")).json();
+  fillSettings(s);
+}
+function fillSettings(s) {
+  const rows = $("schedRows"); rows.replaceChildren();
+  s.days.forEach((name, d) => {
+    const row = el("label"); row.style.cssText = "display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:6px 0";
+    const input = el("input"); input.className = "url"; input.dataset.day = d; input.value = s.schedule[d]; input.placeholder = "no visits";
+    row.append(el("span", "", name), input); rows.append(row);
+  });
+  $("sMinutes").value = s.minutes; $("sWards").value = s.wards.join("\n"); $("sStart").value = s.rotationStart; $("sCycles").value = s.rotationCycles;
+  $("sEnds").textContent = `${s.totalWeeks} weeks in all. The last day anyone can sign up for is ${s.ends}.`;
+  $("sMPhone").value = s.missionaryPhone; $("sHName").value = s.helpName; $("sHPhone").value = s.helpPhone;
+  const t = el("table"); t.innerHTML = "<tr><th>#</th><th>Week of</th><th>Ward</th></tr>";
+  for (const w of s.weeks) { const tr = el("tr"); cell(tr, w.n); cell(tr, w.start); cell(tr, w.ward || "—"); t.append(tr); }
+  $("weeksList").replaceChildren(t);
+}
+async function saveSettings(body, msgId) {
+  okMsg(msgId, "Saving…");
+  const r = await post("/api/admin/settings", body); const d = await r.json();
+  if (!r.ok) { okMsg(msgId, d.errors.join(" "), false); return; }
+  fillSettings(d.settings);
+  okMsg(msgId, "Saved — the sign-up page is updated." + (d.warnings.length ? "\n⚠ " + d.warnings.join("\n⚠ ") : ""));
+  $(msgId).style.whiteSpace = "pre-wrap";
+}
+$("saveSched").onclick = () => { const schedule = {}; document.querySelectorAll("#schedRows input").forEach((i) => schedule[i.dataset.day] = i.value); saveSettings({ schedule, minutes: $("sMinutes").value }, "schedMsg"); };
+$("saveRot").onclick = () => saveSettings({ wards: $("sWards").value, rotationStart: $("sStart").value, rotationCycles: $("sCycles").value }, "rotMsg");
+$("saveContact").onclick = () => saveSettings({ missionaryPhone: $("sMPhone").value, helpName: $("sHName").value, helpPhone: $("sHPhone").value }, "contactMsg");
 </script>
 </body>
 </html>
