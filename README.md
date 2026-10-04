@@ -33,6 +33,7 @@ npm test
 | `MISSIONARY_PHONE`, `HELP_NAME`, `HELP_PHONE` | from the old sign-up doc | Shown at the bottom of the page |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
+| `MISSIONARY_KEY` | _(unset = missionary page off)_ | Secret in the missionaries' private link `/m/<key>` (page, downloads and live calendar feed). Change it to revoke the link. |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |
 | `DATA_DIR` | `./data` | Where the SQLite file lives. **On a host with a temporary disk, mount a volume here or sign-ups vanish on redeploy.** |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (or `TWILIO_MESSAGING_SERVICE_SID`) | | Turns on text reminders. Until set, the reminder checkboxes are hidden. |
