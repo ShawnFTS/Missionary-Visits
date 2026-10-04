@@ -2,11 +2,12 @@ import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf } from "./time.js";
-import { slotProblem, buildWeek } from "./slots.js";
-import { cleanFamily, normalizePhone, maskPhone, displayFamily } from "./people.js";
-import { buildIcs, googleCalendarUrl } from "./ics.js";
+import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf, sundayOf } from "./time.js";
+import { slotProblem, buildWeek, wardForWeek } from "./slots.js";
+import { cleanFamily, normalizePhone, maskPhone, displayFamily, cleanAddress, fmtPhone } from "./people.js";
+import { buildIcs, buildFeed, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
+import * as analytics from "./analytics.js";
 import { allTimes, slotTimesOn } from "./config.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,6 +39,23 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     });
   });
 
+  // Beacon fired by the sign-up page. It needs JavaScript to run, which quietly drops
+  // link-preview fetchers and most scanners. ?notrack on the page's address makes
+  // this browser invisible (for you, so your own visits don't count).
+  app.post("/api/hit", (req, res) => {
+    const off = "mv=off; Max-Age=315360000; Path=/; SameSite=Lax";
+    let id = analytics.readCookie(req, "mv");
+    if (req.body?.off === true) { res.set("Set-Cookie", off); return res.status(204).end(); }
+    if (id === "off" || analytics.isBot(req.get("user-agent"))) return res.status(204).end();
+    if (!/^[\w-]{10,32}$/.test(id)) id = analytics.newVisitorId();
+    res.set("Set-Cookie", `mv=${id}; Max-Age=31536000; Path=/; SameSite=Lax; HttpOnly${req.secure ? "; Secure" : ""}`);
+    analytics.record(db, {
+      kind: "view", visitor: id, ua: req.get("user-agent"), now: now(),
+      src: analytics.cleanSrc(req.body?.src), ref: analytics.refHost(req.body?.ref, req.get("host")),
+    });
+    res.status(204).end();
+  });
+
   app.get("/api/week", (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json(buildWeek(cfg, now(), req.query.start, activeBookings(), blockedSet()));
@@ -53,33 +71,42 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     return recent.length > 20;
   };
 
-  app.post("/api/book", (req, res) => {
-    if (limited(req.ip)) return res.status(429).json({ error: "Too many attempts. Please try again in a little while." });
-    const { date, time } = req.body || {};
+  // Shared by the public form and the admin "add a visit" form. Returns { token } or { status, error }.
+  function createBooking(body, { allowReminders }) {
+    const { date, time } = body || {};
     const problem = slotProblem(cfg, date, time, now());
-    if (problem) return res.status(400).json({ error: problem });
-    const family = cleanFamily(req.body.family);
-    if (!family) return res.status(400).json({ error: "Please enter your family name." });
-    const phone = normalizePhone(req.body.phone);
-    if (!phone) return res.status(400).json({ error: "Please enter a 10-digit mobile number." });
-    if (blockedSet().has(`${date} ${time}`)) return res.status(409).json({ error: "That time is no longer available." });
+    if (problem) return { status: 400, error: problem };
+    const family = cleanFamily(body.family);
+    if (!family) return { status: 400, error: "Please enter your family name." };
+    const phone = normalizePhone(body.phone);
+    if (!phone) return { status: 400, error: "Please enter a 10-digit mobile number." };
+    if (blockedSet().has(`${date} ${time}`)) return { status: 409, error: "That time is no longer available." };
 
-    const wantsText = smsConfigured(cfg);
+    const wantsText = allowReminders && smsConfigured(cfg);
     const token = crypto.randomBytes(16).toString("base64url");
     try {
       db.prepare(
-        `INSERT INTO bookings (token, slot_date, slot_time, start_utc, family, phone, remind_day, remind_hour, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(token, date, time, zonedToUtc(date, time, cfg.tz), family, phone,
-        wantsText && req.body.remindDay === true ? 1 : 0,
-        wantsText && req.body.remindHour === true ? 1 : 0, now());
+        `INSERT INTO bookings (token, slot_date, slot_time, start_utc, family, phone, address, remind_day, remind_hour, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(token, date, time, zonedToUtc(date, time, cfg.tz), family, phone, cleanAddress(body.address),
+        wantsText && body.remindDay === true ? 1 : 0,
+        wantsText && body.remindHour === true ? 1 : 0, now());
     } catch (e) {
       if (String(e.code).startsWith("SQLITE_CONSTRAINT")) {
-        return res.status(409).json({ error: "Someone just signed up for that time. Please pick another." });
+        return { status: 409, error: "Someone just signed up for that time. Please pick another." };
       }
       throw e;
     }
-    res.status(201).json({ token });
+    return { token };
+  }
+
+  app.post("/api/book", (req, res) => {
+    if (limited(req.ip)) return res.status(429).json({ error: "Too many attempts. Please try again in a little while." });
+    const r = createBooking(req.body, { allowReminders: true });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    const id = analytics.readCookie(req, "mv");
+    if (/^[\w-]{10,32}$/.test(id) && id !== "off") analytics.record(db, { kind: "signup", visitor: id, ua: req.get("user-agent"), now: now() });
+    res.status(201).json({ token: r.token });
   });
 
   const present = (b) => ({
@@ -133,19 +160,68 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
 
   app.get("/admin", requireAdmin, (req, res) => res.sendFile(path.join(root, "private", "admin.html")));
 
+  // The missionaries' calendar link. Derived from the admin password so there is
+  // nothing extra to configure; change the password and the old link stops working.
+  const feedToken = () => cfg.feedToken || (cfg.adminPassword
+    ? crypto.createHmac("sha256", cfg.adminPassword).update("missionary-feed").digest("base64url").slice(0, 32) : "");
+  const wardOf = (date) => wardForWeek(cfg, sundayOf(date));
+
+  app.get("/missionaries/:file", (req, res) => {
+    const m = /^([A-Za-z0-9_-]+)\.ics$/.exec(req.params.file);
+    const tok = feedToken();
+    if (!tok || !m || !same(m[1], tok)) return res.status(404).send("Not found");
+    const rows = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(now() - 2 * 86400_000)
+      .map((b) => ({ ...b, phone_display: fmtPhone(b.phone), ward: wardOf(b.slot_date) }));
+    res.set({ "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer" });
+    res.send(buildFeed(rows, cfg));
+  });
+
   app.get("/api/admin/state", requireAdmin, (req, res) => {
     const t = now();
     const bookings = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(t - 6 * 3600_000)
       .map((b) => ({
-        id: b.id, family: displayFamily(b.family), phone: b.phone,
+        id: b.id, family: displayFamily(b.family), phone: fmtPhone(b.phone), address: b.address,
+        weekStart: sundayOf(b.slot_date), ward: wardOf(b.slot_date),
         dayLabel: fmtDay(b.slot_date, { weekday: "short", month: "short", day: "numeric" }),
         timeLabel: fmtTime(b.slot_time), remindDay: !!b.remind_day, remindHour: !!b.remind_hour, smsError: b.sms_error,
       }));
     const blocks = db.prepare(`SELECT * FROM blocks ORDER BY slot_date, slot_time`).all()
       .filter((x) => x.slot_date >= todayInZone(t, cfg.tz))
       .map((x) => ({ date: x.slot_date, time: x.slot_time, label: `${fmtDay(x.slot_date)} at ${fmtTime(x.slot_time)}` }));
-    res.json({ bookings, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg) });
+    const base = cfg.selfUrl || `${req.protocol}://${req.get("host")}`;
+    const feedUrl = `${base}/missionaries/${feedToken()}.ics`;
+    res.json({
+      bookings, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg),
+      feedUrl, webcalUrl: feedUrl.replace(/^https?:/, "webcal:"),
+    });
   });
+
+  // Admin-entered visits (a family who phoned instead of using the page). No text
+  // reminders: nobody ticked the consent box.
+  app.post("/api/admin/book", requireAdmin, (req, res) => {
+    const r = createBooking(req.body, { allowReminders: false });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.status(201).json({ ok: true });
+  });
+
+  const csvCell = (v) => {
+    let s = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // a family name must not become a spreadsheet formula
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  app.get("/api/admin/export.csv", requireAdmin, (req, res) => {
+    const rows = db.prepare(`SELECT * FROM bookings ORDER BY slot_date, slot_time`).all();
+    const head = ["Date", "Time", "Ward", "Family", "Phone", "Address", "Day reminder", "Hour reminder", "Status", "Signed up"];
+    const lines = [head, ...rows.map((b) => [
+      b.slot_date, fmtTime(b.slot_time), wardOf(b.slot_date) || "", displayFamily(b.family), fmtPhone(b.phone), b.address || "",
+      b.remind_day ? "yes" : "", b.remind_hour ? "yes" : "",
+      b.cancelled_at ? `cancelled (${b.cancelled_by})` : "booked", new Date(b.created_at).toISOString(),
+    ])].map((r) => r.map(csvCell).join(","));
+    res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="missionary-visits.csv"' });
+    res.send(lines.join("\r\n") + "\r\n");
+  });
+
+  app.get("/api/admin/stats", requireAdmin, (req, res) => res.json(analytics.stats(db, cfg, now())));
 
   app.post("/api/admin/cancel/:id", requireAdmin, (req, res) => {
     db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'admin' WHERE id = ? AND cancelled_at IS NULL`).run(now(), Number(req.params.id));

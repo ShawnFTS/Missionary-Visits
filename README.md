@@ -7,7 +7,11 @@ A plain sign-up sheet for hosting the missionaries. No ads, no accounts, no them
 - Optional text reminders **1 day before** and **1 hour before** (Twilio).
 - "Add to my calendar" (.ics for iPhone/Outlook/Apple) and "Add to Google Calendar".
 - Each family gets a private link (`/b/<token>`) to re-download the calendar file or cancel.
-- `/admin` (password) to cancel a visit or block a time.
+- Optional address on the form (never shown publicly). It becomes the location of the missionaries' calendar events, with Google/Apple Maps links for one-tap directions.
+- `/admin` (password): visits grouped by week and ward, add a visit by hand, cancel, block times, CSV export,
+  the **missionary calendar link** (subscribe once; new sign-ups and cancellations flow to their phones), and
+  **visitor stats** (anonymous: one cookie per browser, device/browser type, where visitors came from; no IPs or names).
+- Tag links to see where visitors come from: `/?src=harmony`. Open `/?notrack` on your own devices so you don't count.
 
 ## Run it
 
@@ -27,6 +31,7 @@ npm test
 | `WARDS` | Harmony, Overland Trails, Springwater, White Hills, Cedar Fort, Fairfield | Ward rotation, comma separated; each Sunday–Saturday week belongs to the next ward |
 | `ROTATION_START` | `2026-09-20` | The Sunday that begins the first ward's week |
 | `MISSIONARY_PHONE`, `HELP_NAME`, `HELP_PHONE` | from the old sign-up doc | Shown at the bottom of the page |
+| `MISSIONARY_FEED_TOKEN` | derived from `ADMIN_PASSWORD` | Optional fixed secret for the missionary calendar link. Changing it (or the admin password) invalidates the old link. |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |

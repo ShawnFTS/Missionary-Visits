@@ -18,3 +18,10 @@ export function normalizePhone(raw) {
 
 export const maskPhone = (e164) => `(•••) •••-${e164.slice(-4)}`;
 export const displayFamily = (f) => `${f} Family`;
+
+export function cleanAddress(raw) {
+  const s = String(raw ?? "").replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069<>]/g, " ").replace(/\s+/g, " ").trim();
+  return s ? s.slice(0, 200) : null;
+}
+
+export const fmtPhone = (e164) => `(${e164.slice(2, 5)}) ${e164.slice(5, 8)}-${e164.slice(8)}`;

@@ -14,6 +14,15 @@ A working sign-up sheet, **Eagle Mountain West Stake Missionary Member Visits**,
   `/b/<token>` link to re-download or cancel; `/admin` (password) to cancel visits or block times.
 - Reminder checkboxes are hidden until all three Twilio variables are set.
 
+## Added after the first handoff
+- Optional **address** on the form; in the missionary calendar it is the event location + Google/Apple Maps links.
+- **Missionary calendar feed** (`/missionaries/<secret>.ics`, link shown on `/admin` → Missionary calendar, with
+  subscribe steps and a message to paste). Secret derives from `ADMIN_PASSWORD`; changing the password rotates it.
+- **Admin upgrades**: grouped by week/ward, add a visit by hand, CSV export.
+- **Anonymous visitor stats** (`/admin` → Visitors): per-browser cookie, device/OS/browser, referrer host, `?src=` tags,
+  sign-up rate. Honest limits are written on that screen.
+- 14 tests pass.
+
 ## Not done yet (in order)
 1. **Railway deploy** — create the project from this repo, add a volume at `/data`, set variables
    (`DATA_DIR=/data`, `ADMIN_PASSWORD`, `SELF_URL`). Steps in `DEPLOY.md`. Not deployed as of this handoff.

@@ -71,6 +71,7 @@
           ...picked,
           family: form.elements.family.value,
           phone: form.elements.phone.value,
+          address: form.elements.address.value,
           remindDay: form.elements.remindDay.checked,
           remindHour: form.elements.remindHour.checked,
         }),
@@ -99,6 +100,12 @@
     if (c.helpPhone) add(`Trouble with this page? ${c.helpName || "Call"} `, c.helpPhone);
     $("reminders").hidden = !smsAvailable;
   });
+  // Anonymous visit count (see src/analytics.js). ?notrack in the address hides this browser.
+  const q = new URLSearchParams(location.search);
+  fetch("/api/hit", {
+    method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ src: q.get("src") || "", ref: document.referrer, off: q.has("notrack") }),
+  }).catch(() => {});
   load();
   // Keep the sheet honest if it's left open: families sign up all day.
   setInterval(() => { if (!dlg.open && state) load(state.weekStart); }, 60_000);

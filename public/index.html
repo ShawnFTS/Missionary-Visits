@@ -48,6 +48,9 @@
     <label class="field">Mobile number
       <input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="(801) 555-0123" required>
     </label>
+    <label class="field">Address <span class="fine" style="font-weight:400">(optional — gives the missionaries directions on their calendar; include your city)</span>
+      <input type="text" name="address" autocomplete="street-address" maxlength="200" placeholder="123 Main St, Eagle Mountain, UT">
+    </label>
     <fieldset class="reminders" id="reminders" hidden>
       <legend>Text me a reminder</legend>
       <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
@@ -63,7 +66,7 @@
 </dialog>
 <footer>
   <p id="contact"></p>
-  <p>Your phone number is never shown on this page.</p>
+  <p>Your phone number and address are shared only with the missionaries and are never shown on this page. Visits to this page are counted anonymously.</p>
 </footer>
 <script src="/app.js"></script>
 </body>

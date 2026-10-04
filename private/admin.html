@@ -6,60 +6,214 @@
 <meta name="robots" content="noindex">
 <title>Admin — Missionary Visits</title>
 <link rel="stylesheet" href="/style.css">
+<style>
+  main { max-width: 1000px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+  .tabs button { background: #fff; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); }
+  .tabs button[aria-selected=true] { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .week-h { margin: 18px 0 4px; font-family: Georgia, serif; font-size: 1.1rem; }
+  .week-h:first-child { margin-top: 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .tile { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .tile b { display: block; font-size: 1.7rem; font-family: Georgia, serif; }
+  .tile span { color: var(--muted); font-size: .85rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; margin-top: 14px; }
+  .cols h3 { margin: 0 0 6px; font-size: .95rem; }
+  .bar { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: .9rem; margin: 3px 0; position: relative; padding: 2px 6px; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--open-bg); border-radius: 6px; z-index: 0; }
+  .bar span { position: relative; z-index: 1; }
+  .url { width: 100%; padding: 10px; font: inherit; font-size: .85rem; border: 1.5px solid #c9c2b2; border-radius: 10px; background: #fff; }
+  .steps li { margin: 6px 0; }
+  .msg { background: var(--gold-bg); border-radius: 10px; padding: 12px; white-space: pre-wrap; font-size: .92rem; }
+  .wide-tbl { overflow-x: auto; }
+</style>
 </head>
 <body>
 <header class="hero small-hero"><div class="hero-inner"><h1><a href="/">Missionary Visits — Admin</a></h1></div></header>
 <main>
-  <section class="panel"><h2 class="serif">Upcoming visits</h2><div id="bookings"></div></section>
-  <section class="panel">
-    <h2 class="serif">Make a time unavailable</h2>
-    <p class="fine">For a ward activity, a transfer day, anything. Tap Open again to put it back.</p>
-    <div class="inline">
-      <label>Date<br><input type="date" id="bDate"></label>
-      <label>Time<br><select id="bTime"></select></label>
-      <button class="btn" id="block">Block it</button>
-    </div>
-    <p class="err" id="err"></p>
-    <div id="blocks"></div>
-  </section>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="visits" aria-selected="true">Visits</button>
+    <button role="tab" data-tab="cal" aria-selected="false">Missionary calendar</button>
+    <button role="tab" data-tab="stats" aria-selected="false">Visitors</button>
+  </div>
+
+  <!-- ===== Visits ===== -->
+  <div data-pane="visits">
+    <section class="panel">
+      <div class="inline" style="justify-content:space-between;align-items:center">
+        <h2 class="serif" style="margin:0">Upcoming visits</h2>
+        <a class="btn ghost small" href="/api/admin/export.csv">Download all as spreadsheet (CSV)</a>
+      </div>
+      <div id="bookings" class="wide-tbl" style="margin-top:12px"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif">Add a visit</h2>
+      <p class="fine">For a family who called or texted instead of using the page. They are not signed up for text reminders.</p>
+      <div class="inline">
+        <label>Date<br><input type="date" id="aDate"></label>
+        <label>Time<br><select id="aTime"></select></label>
+        <label>Family name<br><input id="aFamily" placeholder="Smith"></label>
+        <label>Mobile<br><input id="aPhone" type="tel" placeholder="801-555-0123"></label>
+        <label>Address (optional)<br><input id="aAddr"></label>
+        <button class="btn" id="add">Add</button>
+      </div>
+      <p class="err" id="addErr"></p>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif">Make a time unavailable</h2>
+      <p class="fine">For a ward activity, a transfer day, anything. Tap Open to put it back.</p>
+      <div class="inline">
+        <label>Date<br><input type="date" id="bDate"></label>
+        <label>Time<br><select id="bTime"></select></label>
+        <button class="btn" id="block">Block it</button>
+      </div>
+      <p class="err" id="err"></p>
+      <div id="blocks"></div>
+    </section>
+  </div>
+
+  <!-- ===== Missionary calendar ===== -->
+  <div data-pane="cal" hidden>
+    <section class="panel">
+      <h2 class="serif">Missionary calendar</h2>
+      <p>Give the missionaries this link once. Every visit — including new sign-ups and cancellations — then appears on their phones by itself, with the family's phone number and address in the event.</p>
+      <p><strong>Treat it like a password.</strong> Anyone with the link can see families' phone numbers and addresses. If it leaks, change <code>ADMIN_PASSWORD</code> in Railway and the old link stops working.</p>
+      <label class="fine">Calendar link<br><input class="url" id="feed" readonly></label>
+      <p class="inline" style="margin-top:10px">
+        <button class="btn small" id="copyFeed">Copy link</button>
+        <a class="btn ghost small" id="webcal" href="#">Open in calendar app (iPhone / Mac)</a>
+      </p>
+
+      <h3 class="serif">How the missionaries subscribe</h3>
+      <ol class="steps">
+        <li><strong>iPhone:</strong> tap the link above, or Settings → Calendar → Accounts → Add Account → Other → <em>Add Subscribed Calendar</em> and paste it.</li>
+        <li><strong>Android / Google Calendar:</strong> on a computer, open calendar.google.com → Other calendars (+) → <em>From URL</em> → paste → Add. It then shows on their phone.</li>
+        <li><strong>Outlook:</strong> Add calendar → Subscribe from web → paste.</li>
+      </ol>
+      <p class="fine">Calendars refresh on their own schedule: iPhone about hourly, Google can take several hours up to a day. For a visit that is today or tomorrow, a text still beats waiting on the calendar.</p>
+
+      <h3 class="serif">Message you can send them</h3>
+      <div class="msg" id="msg"></div>
+      <p><button class="btn small" id="copyMsg">Copy message</button></p>
+    </section>
+  </div>
+
+  <!-- ===== Visitors ===== -->
+  <div data-pane="stats" hidden>
+    <section class="panel">
+      <h2 class="serif">Visitors to the sign-up page</h2>
+      <div class="tiles" id="tiles"></div>
+      <div class="cols">
+        <div><h3>Visitors per day (last 14 days)</h3><div id="daily"></div></div>
+        <div><h3>Device</h3><div id="devices"></div></div>
+        <div><h3>Operating system</h3><div id="os"></div></div>
+        <div><h3>Browser</h3><div id="browsers"></div></div>
+        <div><h3>Where they came from</h3><div id="referrers"></div></div>
+        <div><h3>Tagged links (<code>?src=</code>)</h3><div id="sources"></div></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="font-size:1.05rem">What these numbers mean</h2>
+      <ul class="fine" style="font-size:.88rem">
+        <li>A "visitor" is a <strong>browser</strong>, not a person: one anonymous cookie each. A family opening it on a phone and a laptop counts twice; a private window counts as new; opening the link inside Messages and again in Safari can count twice.</li>
+        <li>Refreshing within 30 minutes isn't counted again. Link-preview robots and most scanners are filtered out, so numbers run a little low rather than high.</li>
+        <li>No names, phone numbers, addresses or IP addresses are stored with visits, and "signed up" is not tied to which family.</li>
+        <li><strong>Tag your links</strong> to see where visitors come from: share <code>/?src=harmony</code> in one ward's group and <code>/?src=springwater</code> in another, and they appear under "Tagged links".</li>
+        <li><strong>Don't count yourself:</strong> open <code>/?notrack</code> once on each of your own devices.</li>
+      </ul>
+    </section>
+  </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-const cell = (tr, text) => { const td = document.createElement("td"); td.textContent = text; tr.append(td); return td; };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const cell = (tr, text) => { const td = el("td", "", text); tr.append(td); return td; };
+let state = null;
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll("[data-pane]").forEach((p) => p.hidden = p.dataset.pane !== b.dataset.tab);
+  if (b.dataset.tab === "stats") loadStats();
+});
+
 async function load() {
-  const s = await (await fetch("/api/admin/state")).json();
-  $("bTime").replaceChildren(...s.times.map((t) => Object.assign(document.createElement("option"), { value: t.value, textContent: t.label })));
-  const b = $("bookings");
-  if (!s.bookings.length) b.textContent = "Nothing booked yet.";
+  state = await (await fetch("/api/admin/state")).json();
+  const opts = state.times.map((t) => Object.assign(el("option"), { value: t.value, textContent: t.label }));
+  $("bTime").replaceChildren(...opts); $("aTime").replaceChildren(...opts.map((o) => o.cloneNode(true)));
+
+  const box = $("bookings");
+  if (!state.bookings.length) box.textContent = "Nothing booked yet.";
   else {
-    const t = document.createElement("table");
-    t.innerHTML = "<tr><th>When</th><th>Family</th><th>Phone</th><th>Texts</th><th></th></tr>";
-    for (const x of s.bookings) {
-      const tr = document.createElement("tr");
-      cell(tr, `${x.dayLabel} ${x.timeLabel}`); cell(tr, x.family); cell(tr, x.phone);
-      cell(tr, [x.remindDay && "1 day", x.remindHour && "1 hour"].filter(Boolean).join(", ") + (x.smsError ? " ⚠ " + x.smsError : "") || "—");
-      const td = document.createElement("td");
-      const btn = Object.assign(document.createElement("button"), { className: "btn danger small", textContent: "Cancel" });
+    box.replaceChildren();
+    let last = null, tbl = null;
+    for (const x of state.bookings) {
+      if (x.weekStart !== last) {
+        last = x.weekStart;
+        box.append(el("div", "week-h", `Week of ${new Date(x.weekStart + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} — ${x.ward ? x.ward + " Ward" : "no ward"}`));
+        tbl = el("table"); tbl.innerHTML = "<tr><th>When</th><th>Family</th><th>Phone</th><th>Address</th><th>Texts</th><th></th></tr>";
+        box.append(tbl);
+      }
+      const tr = el("tr");
+      cell(tr, `${x.dayLabel} ${x.timeLabel}`); cell(tr, x.family); cell(tr, x.phone); { const td = cell(tr, x.address ? "" : "—"); if (x.address) { const a = el("a", "", x.address); a.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(x.address); a.target = "_blank"; a.rel = "noreferrer"; td.append(a); } }
+      cell(tr, ([x.remindDay && "1 day", x.remindHour && "1 hour"].filter(Boolean).join(", ") || "—") + (x.smsError ? " ⚠ " + x.smsError : ""));
+      const td = el("td"); const btn = el("button", "btn danger small", "Cancel");
       btn.onclick = async () => { if (confirm(`Cancel ${x.family} on ${x.dayLabel}?`)) { await post(`/api/admin/cancel/${x.id}`); load(); } };
-      td.append(btn); tr.append(td); t.append(tr);
+      td.append(btn); tr.append(td); tbl.append(tr);
     }
-    b.replaceChildren(t);
   }
-  $("blocks").replaceChildren(...s.blocks.map((k) => {
-    const d = document.createElement("div"); d.style.margin = "8px 0";
-    d.append(Object.assign(document.createElement("span"), { className: "tag", textContent: k.label }));
-    const btn = Object.assign(document.createElement("button"), { className: "btn ghost small", textContent: "Open" });
-    btn.onclick = async () => { await post("/api/admin/unblock", k); load(); };
+  $("blocks").replaceChildren(...state.blocks.map((k) => {
+    const d = el("div"); d.style.margin = "8px 0"; d.append(el("span", "tag", k.label));
+    const btn = el("button", "btn ghost small", "Open"); btn.onclick = async () => { await post("/api/admin/unblock", k); load(); };
     d.append(btn); return d;
   }));
+
+  $("feed").value = state.feedUrl; $("webcal").href = state.webcalUrl;
+  $("msg").textContent = `Hi Elders/Sisters! Here is the calendar for the member visits in the Eagle Mountain West Stake. Subscribe once and every family that signs up appears on your calendar automatically, with their phone number and address in the event:\n\n${state.webcalUrl}\n\n(iPhone: tap the link. Android/Google Calendar: Other calendars → From URL → paste ${state.feedUrl}) Please keep this link private — it has families' phone numbers and addresses.`;
 }
+
 $("block").onclick = async () => {
   $("err").textContent = "";
   const r = await post("/api/admin/block", { date: $("bDate").value, time: $("bTime").value });
   if (!r.ok) $("err").textContent = (await r.json()).error;
   load();
 };
+$("add").onclick = async () => {
+  $("addErr").textContent = "";
+  const r = await post("/api/admin/book", { date: $("aDate").value, time: $("aTime").value, family: $("aFamily").value, phone: $("aPhone").value, address: $("aAddr").value });
+  if (!r.ok) { $("addErr").textContent = (await r.json()).error; return; }
+  for (const id of ["aFamily", "aPhone", "aAddr"]) $(id).value = "";
+  load();
+};
+const copy = (text, btn) => navigator.clipboard.writeText(text).then(() => { const o = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => btn.textContent = o, 1500); });
+$("copyFeed").onclick = (e) => copy(state.feedUrl, e.target);
+$("copyMsg").onclick = (e) => copy($("msg").textContent, e.target);
+
+function bars(id, items) {
+  const box = $(id); box.replaceChildren();
+  if (!items.length) { box.append(el("span", "fine", "Nothing yet")); return; }
+  const max = Math.max(...items.map((i) => i.count));
+  for (const i of items) {
+    const row = el("div", "bar"); const f = el("i"); f.style.width = Math.round((100 * i.count) / max) + "%";
+    row.append(f, el("span", "", i.name), el("span", "", i.count)); box.append(row);
+  }
+}
+async function loadStats() {
+  const s = await (await fetch("/api/admin/stats")).json();
+  const t = s.totals;
+  const tile = (n, label) => { const d = el("div", "tile"); d.append(el("b", "", n), el("span", "", label)); return d; };
+  $("tiles").replaceChildren(
+    tile(t.visitors, "browsers that have visited"), tile(t.views, "visits in all"),
+    tile(`${s.last7.visitors} / ${s.last7.views}`, "browsers / visits, last 7 days"),
+    tile(`${s.last30.visitors} / ${s.last30.views}`, "browsers / visits, last 30 days"),
+    tile(t.returning, "came back on another day"), tile(t.signups, "sign-ups after visiting"),
+    tile(t.conversionPct + "%", "of browsers signed up"));
+  bars("daily", s.daily.map((d) => ({ name: d.date.slice(5), count: d.unique })));
+  bars("devices", s.devices); bars("os", s.os); bars("browsers", s.browsers);
+  bars("referrers", s.referrers); bars("sources", s.sources);
+}
 load();
 </script>
 </body>

@@ -31,6 +31,7 @@ export function loadConfig(env = process.env) {
     helpName: env.HELP_NAME ?? "Shawn Sandberg",
     helpPhone: env.HELP_PHONE ?? "801-404-4111",
     adminPassword: env.ADMIN_PASSWORD || "",
+    feedToken: env.MISSIONARY_FEED_TOKEN || "", // optional; default is derived from ADMIN_PASSWORD
     dataDir: env.DATA_DIR || "./data",
     selfUrl: (env.SELF_URL || "").replace(/\/$/, ""),
     twilio: {

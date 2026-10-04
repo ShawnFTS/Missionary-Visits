@@ -32,11 +32,23 @@ export function openDb(dir) {
     -- handler, so two phones tapping the same slot at once cannot both win.
     CREATE UNIQUE INDEX IF NOT EXISTS ux_active_slot
       ON bookings(slot_date, slot_time) WHERE cancelled_at IS NULL;
+    -- Anonymous visit counting. Deliberately holds no IP address, no name and no booking id:
+    -- a signup event says "a visitor signed up", never which family.
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL,   -- 'view' | 'signup'
+      visitor TEXT NOT NULL,                                              -- random cookie id, one per browser
+      device TEXT, os TEXT, browser TEXT, src TEXT, ref TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_events_ts ON events(ts);
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,
       PRIMARY KEY (slot_date, slot_time)
     );
   `);
+  // Added after first deploy: where the missionaries should go. Guarded so existing data survives.
+  if (!db.prepare("PRAGMA table_info(bookings)").all().some((c) => c.name === "address")) {
+    db.exec("ALTER TABLE bookings ADD COLUMN address TEXT");
+  }
   return db;
 }
