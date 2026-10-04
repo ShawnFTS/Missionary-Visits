@@ -26,8 +26,9 @@ npm test
 `/admin` → **Settings** edits the schedule (times per day), visit length, ward rotation (order, start Sunday, number of
 cycles) and the contact info shown on the page. Changes apply immediately and survive restarts; they override the
 environment defaults below. They never move, hide or cancel a family who has already signed up.
-`/admin` → **Missionaries** keeps the list of missionaries (name, email, optional mobile) who are told when a visit is
-**cancelled** (and optionally when one is **booked**). The cancelled time opens up on the sign-up page for others.
+`/admin` → **Missionaries** keeps the list of missionaries (name, mobile, optional email for your records) who are **texted**
+when a visit is cancelled (and optionally when one is booked), using the same Twilio number as the family reminders.
+The cancelled time opens up on the sign-up page for others.
 
 ## Settings (environment variables, all optional)
 
@@ -42,7 +43,6 @@ environment defaults below. They never move, hide or cancel a family who has alr
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
 | `MISSIONARY_KEY` | _(unset = missionary page off)_ | Secret in the missionaries' private link `/m/<key>` (page, downloads and live calendar feed). Change it to revoke the link. |
-| `RESEND_API_KEY`, `MAIL_FROM` | | Turns on email to the missionaries (Resend). e.g. `MAIL_FROM=Missionary Visits <visits@missionaryvisits.com>` (domain must be verified in Resend). Until set, notifications are logged as "email isn't set up". |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |
 | `DATA_DIR` | `./data` | Where the SQLite file lives. **On a host with a temporary disk, mount a volume here or sign-ups vanish on redeploy.** |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (or `TWILIO_MESSAGING_SERVICE_SID`) | | Turns on text reminders. Until set, the reminder checkboxes are hidden. |

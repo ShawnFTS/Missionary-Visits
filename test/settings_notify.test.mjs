@@ -10,11 +10,10 @@ const NOW = zonedToUtc("2026-10-06", "10:00", "America/Denver"); // Tue
 const servers = [];
 after(() => servers.forEach((s) => { s.closeAllConnections?.(); s.close(); }));
 
-function start({ db = openDb(":memory:"), sent = { email: [], sms: [] }, failEmail = false, none = false, clock = { t: NOW } } = {}) {
+function start({ db = openDb(":memory:"), sent = { sms: [] }, failSms = false, none = false, clock = { t: NOW } } = {}) {
   const cfg = loadConfig({ ADMIN_PASSWORD: "pw", SELF_URL: "https://x.test" });
-  const sendEmail = none ? null : async (m) => { if (failEmail) throw new Error("mailbox full"); sent.email.push(m); };
-  const sendSms = none ? null : async (to, body) => { sent.sms.push({ to, body }); };
-  const server = createApp({ db, cfg, now: () => clock.t, sendEmail, sendSms }).listen(0);
+  const sendSms = none ? null : async (to, body) => { if (failSms) throw new Error("carrier rejected"); sent.sms.push({ to, body }); };
+  const server = createApp({ db, cfg, now: () => clock.t, sendSms }).listen(0);
   servers.push(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   const admin = { Authorization: "Basic " + Buffer.from("a:pw").toString("base64") };
@@ -106,46 +105,44 @@ test("saved settings survive a restart", async () => {
   assert.equal(t2.cfg.rotationCycles, 3);
 });
 
-test("contacts: validation, edit, remove", async () => {
+test("contacts: a mobile is required, email is optional record-keeping, edit, remove", async () => {
   const t = start();
-  assert.equal((await t.a("/api/admin/contacts", { name: "" })).status, 400);
-  assert.equal((await t.a("/api/admin/contacts", { name: "E", email: "nope" })).status, 400);
-  assert.equal((await t.a("/api/admin/contacts", { name: "E" })).status, 400);                 // no way to reach them
+  assert.equal((await t.a("/api/admin/contacts", { name: "", phone: "385-233-7693" })).status, 400);
+  assert.equal((await t.a("/api/admin/contacts", { name: "E" })).status, 400);                  // texts need a number
   assert.equal((await t.a("/api/admin/contacts", { name: "E", phone: "12" })).status, 400);
-  assert.equal((await t.a("/api/admin/contacts", { name: "Elder Jones", email: "Jones@Example.org" })).status, 200);
-  assert.equal((await t.a("/api/admin/contacts", { name: "Dup", email: "jones@example.org" })).status, 409);
-  assert.equal((await t.j("/api/admin/contacts", { name: "x", email: "a@b.co" })).status, 401);
+  assert.equal((await t.a("/api/admin/contacts", { name: "E", phone: "385-233-7693", email: "nope" })).status, 400);
+  assert.equal((await t.a("/api/admin/contacts", { name: "Elder Jones", phone: "385-233-7693", email: "Jones@Example.org" })).status, 200);
+  assert.equal((await t.a("/api/admin/contacts", { name: "Dup", phone: "(385) 233-7693" })).status, 409);
+  assert.equal((await t.a("/api/admin/contacts", { name: "No email", phone: "801-555-0100" })).status, 200);
+  assert.equal((await t.j("/api/admin/contacts", { name: "x", phone: "801-555-0101" })).status, 401);
   let d = await (await t.a("/api/admin/contacts")).json();
-  assert.equal(d.contacts.length, 1);
-  assert.equal(d.contacts[0].email, "jones@example.org");
-  assert.equal(d.emailReady, true);
-  await t.a("/api/admin/contacts", { id: d.contacts[0].id, name: "Elder J", email: "jones@example.org", notifySignup: true });
+  assert.equal(d.contacts.length, 2);
+  assert.equal(d.textReady, true);
+  const jones = d.contacts.find((c) => c.name === "Elder Jones");
+  assert.equal(jones.email, "jones@example.org");
+  await t.a("/api/admin/contacts", { id: jones.id, name: "Elder J", phone: "385-233-7693", notifySignup: true });
   d = await (await t.a("/api/admin/contacts")).json();
-  assert.deepEqual([d.contacts[0].name, d.contacts[0].notifySignup], ["Elder J", true]);
-  await t.a(`/api/admin/contacts/${d.contacts[0].id}/remove`);
-  assert.equal((await (await t.a("/api/admin/contacts")).json()).contacts.length, 0);
+  assert.deepEqual([d.contacts.find((c) => c.id === jones.id).name, d.contacts.find((c) => c.id === jones.id).notifySignup], ["Elder J", true]);
+  await t.a(`/api/admin/contacts/${jones.id}/remove`);
+  assert.equal((await (await t.a("/api/admin/contacts")).json()).contacts.length, 1);
 });
 
-test("a cancellation tells the missionaries once, and the time opens up again", async () => {
+test("a cancellation texts the missionaries once, and the time opens up again", async () => {
   const t = start();
-  await t.a("/api/admin/contacts", { name: "Elder Jones", email: "jones@example.org", phone: "385-233-7693", sms: true });
-  await t.a("/api/admin/contacts", { name: "Sister Lee", email: "lee@example.org", notifyCancel: false }); // opted out
+  await t.a("/api/admin/contacts", { name: "Elder Jones", phone: "385-233-7693" });
+  await t.a("/api/admin/contacts", { name: "Sister Lee", phone: "801-555-0100", notifyCancel: false }); // opted out
   const { token } = await (await book(t)).json();
   await tick();
-  assert.equal(t.sent.email.length, 0); // sign-ups are off by default
+  assert.equal(t.sent.sms.length, 0); // sign-up texts are off by default
 
   assert.equal((await t.j(`/api/booking/${token}/cancel`, {})).status, 200);
   assert.equal((await t.j(`/api/booking/${token}/cancel`, {})).status, 200); // double tap
   await tick();
-  assert.equal(t.sent.email.length, 1);
-  assert.equal(t.sent.email[0].to, "jones@example.org");
-  assert.match(t.sent.email[0].subject, /Cancelled: Smith Family, Thu, Oct 8 7:30 PM/);
-  assert.match(t.sent.email[0].text, /\(801\) 555-0123/);
-  assert.match(t.sent.email[0].text, /1 Main St/);
-  assert.match(t.sent.email[0].text, /open again/);
-  assert.match(t.sent.email[0].text, /https:\/\/x\.test\/\?start=2026-10-04/);
   assert.equal(t.sent.sms.length, 1);
   assert.equal(t.sent.sms[0].to, "+13852337693");
+  assert.match(t.sent.sms[0].body, /Visit cancelled: Smith Family, Thu, Oct 8 7:30 PM \(\(801\) 555-0123\)/);
+  assert.match(t.sent.sms[0].body, /open again/);
+  assert.match(t.sent.sms[0].body, /https:\/\/x\.test\/\?start=2026-10-04/);
 
   // the slot is open on the public sheet and another family can take it
   const wk = await (await t.j("/api/week?start=2026-10-04")).json();
@@ -153,53 +150,51 @@ test("a cancellation tells the missionaries once, and the time opens up again", 
   assert.equal((await book(t, { family: "Jones" })).status, 201);
 });
 
-test("admin cancel notifies; sign-up notice is opt-in; past visits and failures behave", async () => {
+test("admin cancel texts; sign-up text is opt-in; past visits are not texted", async () => {
   const t = start();
-  await t.a("/api/admin/contacts", { name: "Elder A", email: "a@example.org", notifySignup: true });
+  await t.a("/api/admin/contacts", { name: "Elder A", phone: "385-233-7693", notifySignup: true });
   const { token } = await (await book(t)).json();
   await tick();
-  assert.equal(t.sent.email.length, 1);
-  assert.match(t.sent.email[0].subject, /^New visit: Smith Family/);
+  assert.equal(t.sent.sms.length, 1);
+  assert.match(t.sent.sms[0].body, /^New visit: Smith Family, Thu, Oct 8 7:30 PM, 1 Main St/);
 
   const id = t.db.prepare("SELECT id FROM bookings WHERE token = ?").get(token).id;
   await t.a(`/api/admin/cancel/${id}`, {});
   await tick();
-  assert.equal(t.sent.email.length, 2);
-  assert.match(t.sent.email[1].text, /cancelled by an administrator/);
+  assert.equal(t.sent.sms.length, 2);
+  assert.match(t.sent.sms[1].body, /^Visit cancelled/);
 
-  // a visit that already happened is not worth a message
   const { token: t2 } = await (await book(t, { date: "2026-10-07", time: "19:30" })).json();
   t.clock.t = zonedToUtc("2026-10-08", "09:00", "America/Denver");
-  const before = t.sent.email.length;
+  const before = t.sent.sms.length;
   await t.j(`/api/booking/${t2}/cancel`, {});
   await tick();
-  assert.equal(t.sent.email.length, before);
+  assert.equal(t.sent.sms.length, before);
 });
 
-test("delivery failures and unconfigured channels are logged, never thrown at the family", async () => {
-  const bad = start({ failEmail: true });
-  await bad.a("/api/admin/contacts", { name: "Elder A", email: "a@example.org" });
+test("delivery failures and unconfigured texting are logged, never thrown at the family", async () => {
+  const bad = start({ failSms: true });
+  await bad.a("/api/admin/contacts", { name: "Elder A", phone: "385-233-7693" });
   const { token } = await (await book(bad)).json();
   assert.equal((await bad.j(`/api/booking/${token}/cancel`, {})).status, 200);
   await tick();
-  let log = (await (await bad.a("/api/admin/contacts")).json()).log;
+  const log = (await (await bad.a("/api/admin/contacts")).json()).log;
   assert.equal(log[0].ok, false);
-  assert.match(log[0].error, /mailbox full/);
+  assert.match(log[0].error, /carrier rejected/);
 
   const off = start({ none: true });
-  await off.a("/api/admin/contacts", { name: "Elder B", email: "b@example.org" });
+  await off.a("/api/admin/contacts", { name: "Elder B", phone: "385-233-7694" });
   const r = await (await book(off)).json();
   assert.equal((await off.j(`/api/booking/${r.token}/cancel`, {})).status, 200);
   await tick();
   const d = await (await off.a("/api/admin/contacts")).json();
-  assert.equal(d.emailReady, false);
+  assert.equal(d.textReady, false);
   assert.match(d.log[0].error, /isn't set up/);
+  assert.match((await (await off.a(`/api/admin/contacts/${d.contacts[0].id}/test`, {})).json()).results[0], /not set up/);
 
-  // the test-message button reports the same truth
-  const id = d.contacts[0].id;
-  assert.match((await (await off.a(`/api/admin/contacts/${id}/test`, {})).json()).results[0], /not set up/);
   const ok = start();
-  await ok.a("/api/admin/contacts", { name: "Elder C", email: "c@example.org" });
+  await ok.a("/api/admin/contacts", { name: "Elder C", phone: "385-233-7695" });
   const cid = (await (await ok.a("/api/admin/contacts")).json()).contacts[0].id;
-  assert.match((await (await ok.a(`/api/admin/contacts/${cid}/test`, {})).json()).results[0], /email: sent/);
+  assert.match((await (await ok.a(`/api/admin/contacts/${cid}/test`, {})).json()).results[0], /text: sent/);
+  assert.equal(ok.sent.sms.at(-1).to, "+13852337695");
 });

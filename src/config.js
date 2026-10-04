@@ -52,8 +52,6 @@ export function loadConfig(env = process.env) {
     adminPassword: env.ADMIN_PASSWORD || "",
     // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
     missionaryKey: env.MISSIONARY_KEY || "",
-    // Email to the missionaries (Resend). Inert until both are set.
-    mail: { apiKey: env.RESEND_API_KEY || "", from: env.MAIL_FROM || "" },
     dataDir: env.DATA_DIR || "./data",
     selfUrl: (env.SELF_URL || "").replace(/\/$/, ""),
     twilio: {

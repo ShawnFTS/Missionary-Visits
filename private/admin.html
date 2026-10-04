@@ -114,29 +114,20 @@
   <div data-pane="contacts" hidden>
     <section class="panel">
       <h2 class="serif">Missionaries to notify</h2>
-      <p>Everyone listed here is told <strong>right away when a visit is cancelled</strong>, with the family's name, time, phone and address. The time then opens up on the sign-up page for another family. You can also choose to hear about new sign-ups.</p>
+      <p>Everyone listed here gets a <strong>text right away when a visit is cancelled</strong>, with the family's name, time and phone number. The time then opens up on the sign-up page for another family. You can also choose to be texted about new sign-ups.</p>
       <p id="chanStatus" class="fine"></p>
-      <details id="emailHelp" class="fine"><summary><strong>How to turn email on</strong></summary>
-        <ol class="steps">
-          <li>Create a free account at <strong>resend.com</strong> and add your domain (missionaryvisits.com). They show a few DNS records; add them at GoDaddy.</li>
-          <li>In Resend create an API key.</li>
-          <li>In Railway → Variables add <code>RESEND_API_KEY</code> (the key) and <code>MAIL_FROM</code> such as <code>Missionary Visits &lt;visits@missionaryvisits.com&gt;</code>, then redeploy.</li>
-        </ol>
-        Texts use the same Twilio number as the family reminders.
-      </details>
       <div id="contactList" class="wide-tbl" style="margin-top:12px"></div>
     </section>
     <section class="panel">
       <h2 class="serif" id="cFormTitle">Add a missionary</h2>
       <div class="inline">
         <label>Name<br><input id="cName" placeholder="Elder Jones"></label>
-        <label>Email<br><input id="cEmail" type="email" placeholder="elder.jones@missionary.org"></label>
-        <label>Mobile (optional)<br><input id="cPhone" type="tel" placeholder="385-233-7693"></label>
+        <label>Mobile (gets the texts)<br><input id="cPhone" type="tel" placeholder="385-233-7693"></label>
+        <label>Email (optional, for your records)<br><input id="cEmail" type="email" placeholder="elder.jones@missionary.org"></label>
       </div>
       <p>
-        <label class="check"><input type="checkbox" id="cCancel" checked> Tell them about <strong>cancellations</strong></label>
-        <label class="check"><input type="checkbox" id="cSignup"> Tell them about <strong>new sign-ups</strong></label>
-        <label class="check"><input type="checkbox" id="cSms"> Text them too (needs a mobile number)</label>
+        <label class="check"><input type="checkbox" id="cCancel" checked> Text them about <strong>cancellations</strong></label>
+        <label class="check"><input type="checkbox" id="cSignup"> Text them about <strong>new sign-ups</strong></label>
       </p>
       <p class="inline"><button class="btn" id="cSave">Save</button><button class="btn ghost" id="cReset" hidden>Cancel editing</button></p>
       <p class="err" id="cErr"></p>
@@ -316,14 +307,13 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
 let editingId = null;
 async function loadContacts() {
   const d = await (await fetch("/api/admin/contacts")).json();
-  $("chanStatus").textContent = `Email: ${d.emailReady ? "✓ set up" : "✗ not set up yet"}  ·  Text: ${d.textReady ? "✓ set up" : "✗ not set up yet"}`;
-  $("emailHelp").open = !d.emailReady;
+  $("chanStatus").textContent = d.textReady ? "Texting: ✓ set up" : "Texting: ✗ not set up yet. Texts start once the Twilio number is approved and its settings are added in Railway.";
   const box = $("contactList"); box.replaceChildren();
   if (!d.contacts.length) box.textContent = "No one yet — add the missionaries below.";
   else {
-    const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Email</th><th>Mobile</th><th>Told about</th><th></th></tr>"; box.append(t);
+    const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Mobile</th><th>Email</th><th>Texted about</th><th></th></tr>"; box.append(t);
     for (const c of d.contacts) {
-      const tr = el("tr"); cell(tr, c.name); cell(tr, c.email || "—"); cell(tr, (c.phone || "—") + (c.sms ? " (texts)" : ""));
+      const tr = el("tr"); cell(tr, c.name); cell(tr, c.phone || "—"); cell(tr, c.email || "—");
       cell(tr, [c.notifyCancel && "cancellations", c.notifySignup && "new sign-ups"].filter(Boolean).join(", ") || "nothing");
       const td = el("td"); td.style.whiteSpace = "nowrap";
       const test = el("button", "btn ghost small", "Send test"); test.onclick = async () => { test.disabled = true; const r = await (await post(`/api/admin/contacts/${c.id}/test`)).json(); alert((r.results || [r.error]).join("\n")); test.disabled = false; loadContacts(); };
@@ -335,23 +325,23 @@ async function loadContacts() {
   const lg = $("notifLog"); lg.replaceChildren();
   if (!d.log.length) lg.textContent = "Nothing sent yet.";
   else {
-    const t = el("table"); t.innerHTML = "<tr><th>When</th><th>What</th><th>To</th><th>How</th><th>Result</th></tr>"; lg.append(t);
-    for (const l of d.log) { const tr = el("tr"); cell(tr, l.when); cell(tr, l.kind === "cancel" ? "Cancellation" : "New sign-up"); cell(tr, l.who); cell(tr, l.channel); cell(tr, l.ok ? "✓ sent" : "✗ " + (l.error || "failed")); t.append(tr); }
+    const t = el("table"); t.innerHTML = "<tr><th>When</th><th>What</th><th>To</th><th>Result</th></tr>"; lg.append(t);
+    for (const l of d.log) { const tr = el("tr"); cell(tr, l.when); cell(tr, l.kind === "cancel" ? "Cancellation" : "New sign-up"); cell(tr, l.who); cell(tr, l.ok ? "✓ sent" : "✗ " + (l.error || "failed")); t.append(tr); }
   }
 }
 function startEdit(c) {
   editingId = c.id; $("cFormTitle").textContent = "Edit " + c.name; $("cReset").hidden = false;
   $("cName").value = c.name; $("cEmail").value = c.email || ""; $("cPhone").value = c.phone || "";
-  $("cCancel").checked = c.notifyCancel; $("cSignup").checked = c.notifySignup; $("cSms").checked = c.sms; $("cName").focus();
+  $("cCancel").checked = c.notifyCancel; $("cSignup").checked = c.notifySignup; $("cName").focus();
 }
 function resetContactForm() {
   editingId = null; $("cFormTitle").textContent = "Add a missionary"; $("cReset").hidden = true;
-  for (const id of ["cName", "cEmail", "cPhone"]) $(id).value = ""; $("cCancel").checked = true; $("cSignup").checked = false; $("cSms").checked = false; $("cErr").textContent = "";
+  for (const id of ["cName", "cEmail", "cPhone"]) $(id).value = ""; $("cCancel").checked = true; $("cSignup").checked = false; $("cErr").textContent = "";
 }
 $("cReset").onclick = resetContactForm;
 $("cSave").onclick = async () => {
   $("cErr").textContent = "";
-  const r = await post("/api/admin/contacts", { id: editingId, name: $("cName").value, email: $("cEmail").value, phone: $("cPhone").value, sms: $("cSms").checked, notifyCancel: $("cCancel").checked, notifySignup: $("cSignup").checked });
+  const r = await post("/api/admin/contacts", { id: editingId, name: $("cName").value, email: $("cEmail").value, phone: $("cPhone").value, notifyCancel: $("cCancel").checked, notifySignup: $("cSignup").checked });
   if (!r.ok) { $("cErr").textContent = (await r.json()).error; return; }
   resetContactForm(); loadContacts();
 };
