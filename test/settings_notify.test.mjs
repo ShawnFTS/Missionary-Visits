@@ -232,7 +232,7 @@ test("the missionaries' phone from Settings is texted without anyone being added
 
 test("an unusable missionary phone number is reported, not texted, and never breaks a cancel", async () => {
   const t = start();
-  await t.a("/api/admin/settings", { missionaryPhone: "call the office" });
+  t.cfg.missionaryPhone = "call the office"; // can only arise from a bad env default now; settings refuses it
   const { token } = await (await book(t)).json();
   assert.equal((await t.j(`/api/booking/${token}/cancel`, {})).status, 200);
   await tick();
@@ -240,4 +240,25 @@ test("an unusable missionary phone number is reported, not texted, and never bre
   const d = await (await t.a("/api/admin/contacts")).json();
   assert.equal(d.main.valid, false);
   assert.match((await (await t.a("/api/admin/notify-test", {})).json()).results[0], /valid 10-digit/);
+});
+
+test("one number does both jobs: bottom of the page and who is texted; new missionaries just change it", async () => {
+  const t = start();
+  assert.equal((await (await t.j("/api/config")).json()).missionaryPhone, "385-233-7693");
+
+  let r = await t.a("/api/admin/settings", { missionaryPhone: "(801) 555-0188" });
+  assert.equal(r.status, 200);
+  assert.equal((await (await t.j("/api/config")).json()).missionaryPhone, "801-555-0188"); // page footer, stored in one format
+
+  const { token } = await (await book(t)).json();
+  await t.j(`/api/booking/${token}/cancel`, {});
+  await tick();
+  assert.equal(t.sent.sms.at(-1).to, "+18015550188"); // and the texts follow it
+
+  assert.equal((await t.a("/api/admin/settings", { missionaryPhone: "call the office" })).status, 400);
+  assert.equal((await t.j("/api/config")).status, 200);
+  assert.equal((await (await t.j("/api/config")).json()).missionaryPhone, "801-555-0188"); // refused, unchanged
+
+  assert.equal((await t.a("/api/admin/settings", { missionaryPhone: "" })).status, 200); // blank = none shown, none texted
+  assert.equal((await (await t.j("/api/config")).json()).missionaryPhone, "");
 });

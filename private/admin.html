@@ -116,7 +116,7 @@
       <h2 class="serif">Who gets texted</h2>
       <p>The missionaries' phone, the number shown at the bottom of the sign-up page, is texted <strong>right away when a visit is cancelled</strong>, with the family's name, time and phone number. The time then opens up on the sign-up page for another family.</p>
       <div class="msg" id="mainBox" style="margin:10px 0"></div>
-      <p class="fine">To change that number, use <strong>Settings → Contact info on the page</strong>.</p>
+      <p class="fine"><strong>New missionaries?</strong> Change the number here. It updates the bottom of the sign-up page and who gets the texts, right away.</p>
       <p id="chanStatus" class="fine"></p>
       <h3 class="serif" style="margin-top:18px">Also text other people (optional)</h3>
       <p class="fine">For example a zone leader or a ward mission leader.</p>
@@ -170,7 +170,7 @@
     <section class="panel">
       <h2 class="serif">Contact info on the page</h2>
       <div class="inline">
-        <label>Missionaries' phone<br><input id="sMPhone"></label>
+        <label>Missionaries' phone (also who gets the texts)<br><input id="sMPhone"></label>
         <label>Help contact name<br><input id="sHName"></label>
         <label>Help contact phone<br><input id="sHPhone"></label>
       </div>
@@ -313,9 +313,20 @@ async function loadContacts() {
   const d = await (await fetch("/api/admin/contacts")).json();
   $("chanStatus").textContent = d.textReady ? "Texting: ✓ set up" : "Texting: ✗ not set up yet. Texts start once the Twilio number is approved and its settings are added in Railway.";
   const mb = $("mainBox"); mb.replaceChildren();
-  if (!d.main.valid) mb.append(el("strong", "", "The missionaries' phone number isn't a valid 10-digit mobile number" + (d.main.raw ? ` ("${d.main.raw}")` : " (it's blank)") + ". Fix it in Settings."));
-  else {
-    mb.append(el("strong", "", "Missionaries' phone: " + d.main.phone), el("br"));
+  {
+    const row = el("div", "inline"); row.style.alignItems = "center";
+    const inp = el("input"); inp.type = "tel"; inp.value = d.main.raw || ""; inp.placeholder = "385-233-7693"; inp.style.width = "180px";
+    const save = el("button", "btn small", "Save number");
+    const note = el("span", "fine");
+    save.onclick = async () => {
+      const r = await post("/api/admin/settings", { missionaryPhone: inp.value }); const j = await r.json();
+      if (!r.ok) { note.style.color = "var(--danger)"; note.textContent = j.errors.join(" "); return; }
+      note.style.color = "var(--open)"; note.textContent = "Saved — the page and the texts now use this number."; loadContacts();
+    };
+    row.append(el("strong", "", "Missionaries' phone:"), inp, save, note); mb.append(row);
+    if (!d.main.valid) { const w = el("p", "err", d.main.raw ? "That isn't a valid 10-digit mobile number, so nobody is being texted." : "No number set, so nobody is being texted and none shows on the page."); mb.append(w); }
+  }
+  if (d.main.valid) {
     for (const [key, label] of [["notifyCancel", "Text about cancellations"], ["notifySignup", "Text about new sign-ups"]]) {
       const lab = el("label", "check"); const cb = el("input"); cb.type = "checkbox"; cb.checked = d.main[key];
       cb.onchange = async () => { await post("/api/admin/settings", { [key]: cb.checked }); };

@@ -3,6 +3,7 @@
 // the live config object, so a change is visible on the sign-up page immediately.
 // A change never touches existing bookings: a visit is stored as an absolute date and
 // time, so moving the schedule or rotation cannot move, hide or cancel anyone.
+import { normalizePhone, formatPhone } from "./people.js";
 import { isDate, dowOf, addDays, fmtDay, fmtTime, todayInZone } from "./time.js";
 import { wardCodes } from "./config.js";
 import { windowEnd, wardForWeek } from "./slots.js";
@@ -77,7 +78,14 @@ export function validate(input) {
     else v.rotationCycles = n;
   }
   for (const k of ["notifyCancel", "notifySignup"]) if (input[k] !== undefined) v[k] = input[k] === true || input[k] === "true";
-  for (const [k, max] of [["missionaryPhone", 30], ["helpName", 60], ["helpPhone", 30]]) if (input[k] !== undefined) v[k] = text(input[k], max);
+  if (input.missionaryPhone !== undefined) {
+    // One number does two jobs: it is shown at the bottom of the sign-up page AND it is who gets the texts.
+    const raw = String(input.missionaryPhone).trim();
+    const p = raw ? normalizePhone(raw) : "";
+    if (raw && !p) errors.push("The missionaries' phone needs to be a 10-digit mobile number, like 385-233-7693 (or leave it blank for none).");
+    else v.missionaryPhone = p ? formatPhone(p).replace(/^\((\d{3})\) (\d{3})-(\d{4})$/, "$1-$2-$3") : "";
+  }
+  for (const [k, max] of [["helpName", 60], ["helpPhone", 30]]) if (input[k] !== undefined) v[k] = text(input[k], max);
   return { errors, values: v };
 }
 

@@ -41,15 +41,16 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 - `/admin` → **Settings**: schedule per day, visit length, ward list/start Sunday/cycles, contact info. Stored in the
   `settings` table (JSON overrides on top of env defaults), applied live, validated (start must be a Sunday, times need
   AM/PM, etc.). A booked visit always stays visible even if its time leaves the schedule; warnings say so after saving.
-- `/admin` → **Missionaries**: the missionaries' shared phone (the number shown at the bottom of the page, set in Settings →
-  `MISSIONARY_PHONE`) is texted by default (toggles: cancellations on, new sign-ups off; no need to re-enter it). Optional
+- `/admin` → **Missionaries**: the missionaries' shared phone (the number shown at the bottom of the page) is texted by default; it is edited right on the Missionaries tab
+  (also in Settings), must be a valid 10-digit mobile, and one change updates both the page footer and who gets texted —
+  that is the step for when a new set of missionaries arrives (toggles: cancellations on, new sign-ups off; no need to re-enter it). Optional
   extra people live in `missionary_contacts` (name, **mobile required**, optional email kept only as a record; flags per
   person; one text per number, flags combined). **Notifications are texts only** (Twilio, same number as the family
   reminders; no email anywhere). On a cancel (family link or admin) every active contact with that flag is texted; once per
   cancellation, skipped for visits already in the past; every attempt is logged in `notification_log` and shown on that
   tab; failures never affect the cancel. The slot reopens for others immediately. "Send test" texts one contact.
   Texting waits on Twilio's toll-free approval. (Resend/email was built and then removed at Shawn's request.)
-- 27 tests pass.
+- 28 tests pass.
 
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
