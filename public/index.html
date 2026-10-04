@@ -10,11 +10,6 @@
 <body>
 <header class="hero">
   <div class="hero-inner">
-    <!-- Drop christ.jpg and missionaries.jpg into public/images/. A missing file simply hides itself. -->
-    <div class="portraits">
-      <figure class="christ"><img src="/images/christ.jpg" alt="Jesus Christ" onerror="this.closest('figure').remove()"></figure>
-      <figure class="missionaries"><img src="/images/missionaries.jpg" alt="Missionaries of The Church of Jesus Christ of Latter-day Saints" onerror="this.closest('figure').remove()"></figure>
-    </div>
     <h1>Eagle Mountain West Stake Missionary Member Visits</h1>
     <p>Find the week your ward is assigned, pick an open time, and enter your family name and phone number. It's a brief visit for the missionaries to get to know your family and to bless your home.</p>
     <p class="verse">“I was a stranger, and ye took me in.” — Matthew 25:35</p>
@@ -52,10 +47,13 @@
       <input type="text" name="address" autocomplete="street-address" maxlength="200" placeholder="123 Main St, Eagle Mountain, UT">
     </label>
     <fieldset class="reminders" id="reminders" hidden>
-      <legend>Text me a reminder</legend>
-      <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
-      <label class="check"><input type="checkbox" name="remindHour"> 1 hour before</label>
-      <p class="fine">By checking a box you agree to receive text messages about this visit only. Message and data rates may apply. Reply STOP to opt out.</p>
+      <label class="check master"><input type="checkbox" name="textMe" id="textMe"> Text me reminders</label>
+      <div id="textDetails" hidden>
+        <p class="fine lead">Choose when to be texted (you'll only get the texts you check):</p>
+        <label class="check"><input type="checkbox" name="remindDay"> 1 day before</label>
+        <label class="check"><input type="checkbox" name="remindHour"> 1 hour before</label>
+        <p class="fine">By checking a box you agree to receive automated text messages from the Eagle Mountain West Stake about this visit only: up to 2 messages per visit. Consent is not required to sign up. Message and data rates may apply. Reply STOP to opt out or HELP for help. <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a></p>
+      </div>
     </fieldset>
     <p class="err" id="err" role="alert"></p>
     <div class="actions">
@@ -66,7 +64,7 @@
 </dialog>
 <footer>
   <p id="contact"></p>
-  <p>Your phone number and address are shared only with the missionaries and are never shown on this page. Visits to this page are counted anonymously.</p>
+  <p>Your phone number and address are shared only with the missionaries and are never shown on this page. Visits to this page are counted anonymously. <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
 </footer>
 <script src="/app.js"></script>
 </body>

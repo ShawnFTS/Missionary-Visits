@@ -77,26 +77,34 @@
   <!-- ===== Missionary calendar ===== -->
   <div data-pane="cal" hidden>
     <section class="panel">
-      <h2 class="serif">Missionary calendar</h2>
-      <p>Give the missionaries this link once. Every visit — including new sign-ups and cancellations — then appears on their phones by itself, with the family's phone number and address in the event.</p>
-      <p><strong>Treat it like a password.</strong> Anyone with the link can see families' phone numbers and addresses. If it leaks, change <code>ADMIN_PASSWORD</code> in Railway and the old link stops working.</p>
-      <label class="fine">Calendar link<br><input class="url" id="feed" readonly></label>
-      <p class="inline" style="margin-top:10px">
-        <button class="btn small" id="copyFeed">Copy link</button>
-        <a class="btn ghost small" id="webcal" href="#">Open in calendar app (iPhone / Mac)</a>
-      </p>
+      <h2 class="serif">Missionary page &amp; calendar</h2>
+      <div id="noKey" hidden class="msg">The missionary link is off. In Railway → Variables, add <code>MISSIONARY_KEY</code> set to a long random value (letters and numbers), then redeploy and reload this page.</div>
+      <div id="hasKey">
+        <p>Give the missionaries <strong>one link</strong>. It opens a private page listing every upcoming visit with the family's phone number and address (tap the address for directions), and lets them download visits or <strong>subscribe</strong> so every new sign-up and cancellation appears on their calendar by itself.</p>
+        <p><strong>Treat it like a password.</strong> Anyone with the link can see families' phone numbers and addresses. If it leaks, change <code>MISSIONARY_KEY</code> in Railway and the old link stops working.</p>
+        <label class="fine">Missionary page link<br><input class="url" id="page" readonly></label>
+        <p class="inline" style="margin-top:10px">
+          <button class="btn small" id="copyPage">Copy link</button>
+          <a class="btn ghost small" id="openPage" href="#" target="_blank" rel="noreferrer">Open the page</a>
+        </p>
+        <label class="fine">Live calendar feed (what their calendar app subscribes to)<br><input class="url" id="feed" readonly></label>
+        <p class="inline" style="margin-top:10px">
+          <button class="btn small" id="copyFeed">Copy feed link</button>
+          <a class="btn ghost small" id="webcal" href="#">Subscribe on iPhone / Mac</a>
+        </p>
 
-      <h3 class="serif">How the missionaries subscribe</h3>
-      <ol class="steps">
-        <li><strong>iPhone:</strong> tap the link above, or Settings → Calendar → Accounts → Add Account → Other → <em>Add Subscribed Calendar</em> and paste it.</li>
-        <li><strong>Android / Google Calendar:</strong> on a computer, open calendar.google.com → Other calendars (+) → <em>From URL</em> → paste → Add. It then shows on their phone.</li>
-        <li><strong>Outlook:</strong> Add calendar → Subscribe from web → paste.</li>
-      </ol>
-      <p class="fine">Calendars refresh on their own schedule: iPhone about hourly, Google can take several hours up to a day. For a visit that is today or tomorrow, a text still beats waiting on the calendar.</p>
+        <h3 class="serif">How the missionaries subscribe</h3>
+        <ol class="steps">
+          <li><strong>iPhone:</strong> open their page and tap Subscribe, or Settings → Calendar → Accounts → Add Account → Other → <em>Add Subscribed Calendar</em> and paste the feed link.</li>
+          <li><strong>Android / Google Calendar:</strong> on a computer, calendar.google.com → Other calendars (+) → <em>From URL</em> → paste the feed link → Add.</li>
+          <li><strong>Outlook:</strong> Add calendar → Subscribe from web → paste.</li>
+        </ol>
+        <p class="fine">Calendars refresh on their own schedule: iPhone about hourly, Google can take several hours up to a day. For a visit today or tomorrow, a text still beats waiting on the calendar.</p>
 
-      <h3 class="serif">Message you can send them</h3>
-      <div class="msg" id="msg"></div>
-      <p><button class="btn small" id="copyMsg">Copy message</button></p>
+        <h3 class="serif">Message you can send them</h3>
+        <div class="msg" id="msg"></div>
+        <p><button class="btn small" id="copyMsg">Copy message</button></p>
+      </div>
     </section>
   </div>
 
@@ -170,8 +178,12 @@ async function load() {
     d.append(btn); return d;
   }));
 
-  $("feed").value = state.feedUrl; $("webcal").href = state.webcalUrl;
-  $("msg").textContent = `Hi Elders/Sisters! Here is the calendar for the member visits in the Eagle Mountain West Stake. Subscribe once and every family that signs up appears on your calendar automatically, with their phone number and address in the event:\n\n${state.webcalUrl}\n\n(iPhone: tap the link. Android/Google Calendar: Other calendars → From URL → paste ${state.feedUrl}) Please keep this link private — it has families' phone numbers and addresses.`;
+  $("noKey").hidden = !!state.pageUrl; $("hasKey").hidden = !state.pageUrl;
+  if (state.pageUrl) {
+    $("page").value = state.pageUrl; $("openPage").href = state.pageUrl;
+    $("feed").value = state.feedUrl; $("webcal").href = state.webcalUrl;
+    $("msg").textContent = `Hi Elders/Sisters! Here is your private page for the member visits in the Eagle Mountain West Stake. It lists every family that has signed up with their phone number and address (tap the address for directions), and you can subscribe so new visits appear on your calendar automatically:\n\n${state.pageUrl}\n\nPlease keep this link private — it has families' phone numbers and addresses.`;
+  }
 }
 
 $("block").onclick = async () => {
@@ -189,6 +201,7 @@ $("add").onclick = async () => {
 };
 const copy = (text, btn) => navigator.clipboard.writeText(text).then(() => { const o = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => btn.textContent = o, 1500); });
 $("copyFeed").onclick = (e) => copy(state.feedUrl, e.target);
+$("copyPage").onclick = (e) => copy(state.pageUrl, e.target);
 $("copyMsg").onclick = (e) => copy($("msg").textContent, e.target);
 
 function bars(id, items) {

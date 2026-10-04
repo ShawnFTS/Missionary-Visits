@@ -12,7 +12,7 @@ after(() => servers.forEach((s) => { s.closeAllConnections?.(); s.close(); }));
 
 function start(over = {}) {
   const db = openDb(":memory:");
-  const cfg = { ...loadConfig({ ADMIN_PASSWORD: "pw", SELF_URL: "https://x.test" }), ...over };
+  const cfg = { ...loadConfig({ ADMIN_PASSWORD: "pw", SELF_URL: "https://x.test", MISSIONARY_KEY: "secretkey123" }), ...over };
   const clock = { t: NOW };
   const server = createApp({ db, cfg, now: () => clock.t }).listen(0);
   servers.push(server);
@@ -23,7 +23,7 @@ function start(over = {}) {
 }
 const book = (t, extra = {}, headers = {}) => t.j("/api/book", { date: "2026-10-07", time: "18:45", family: "Smith", phone: "8015550123", address: "123 Main St, Eagle Mountain", ...extra }, headers);
 
-test("address is stored but never public; missionary feed carries phone + address", async () => {
+test("address is stored but never public; the missionaries' feed carries phone + address + directions", async () => {
   const t = start();
   assert.equal((await book(t)).status, 201);
   assert.equal((await book(t, { time: "19:30", family: "Jones", address: "" })).status, 201); // address optional
@@ -31,38 +31,36 @@ test("address is stored but never public; missionary feed carries phone + addres
   const week = JSON.stringify(await (await t.j("/api/week?start=2026-10-04")).json());
   assert.ok(!week.includes("Main St") && !week.includes("555"));
 
-  const { feedUrl } = await (await t.j("/api/admin/state", null, t.admin)).json();
-  assert.match(feedUrl, /^https:\/\/x\.test\/missionaries\/[\w-]{32}\.ics$/);
-  const feed = await fetch(t.base + new URL(feedUrl).pathname);
+  const st = await (await t.j("/api/admin/state", null, t.admin)).json();
+  assert.equal(st.pageUrl, "https://x.test/m/secretkey123");
+  assert.equal(st.webcalUrl, "webcal://x.test/m/secretkey123/feed.ics");
+  const api = await (await fetch(`${t.base}/api/m/secretkey123/visits`)).json();
+  assert.equal(api.visits.find((v) => v.family === "Smith Family").address, "123 Main St, Eagle Mountain");
+
+  const feed = await fetch(`${t.base}/m/secretkey123/feed.ics`);
   assert.match(feed.headers.get("content-type"), /text\/calendar/);
   const body = await feed.text();
-  assert.match(body, /X-WR-CALNAME:Missionary Member Visits/);
-  assert.match(body, /SUMMARY:Visit: Smith Family \(Springwater\)/);
-  assert.match(body, /LOCATION:123 Main St\\, Eagle Mountain/);
-  assert.match(body, /Phone: \(801\) 555-0123/);
-  const flat = body.replace(/\r\n /g, ""); // unfold long lines
-  assert.match(flat, /URL:https:\/\/www\.google\.com\/maps\/search\/\/?\?api=1&query=123%20Main%20St%2C%20Eagle%20Mountain/);
-  assert.match(flat, /Directions \(Apple Maps\): https:\/\/maps\.apple\.com\/\?q=123%20Main%20St/);
   assert.equal((body.match(/BEGIN:VEVENT/g) || []).length, 2);
+  const flat = body.replace(/\r\n /g, ""); // unfold long lines
+  assert.match(flat, /LOCATION:123 Main St\\, Eagle Mountain/);
+  assert.match(flat, /Phone: \(801\) 555-0123/);
+  assert.match(flat, /URL:https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=123%20Main%20St%2C%20Eagle%20Mountain/);
+  assert.match(flat, /Directions \(Apple Maps\): https:\/\/maps\.apple\.com\/\?q=123%20Main%20St/);
+  assert.match(flat, /Ward: Springwater/);
   for (const line of body.split("\r\n")) assert.ok(Buffer.byteLength(line) <= 75);
 });
 
-test("feed: wrong token, no admin password, and cancelled visits", async () => {
+test("missionary feed: wrong key, key unset, and cancelled visits", async () => {
   const t = start();
   const { token } = await (await book(t)).json();
-  assert.equal((await fetch(`${t.base}/missionaries/${"a".repeat(32)}.ics`)).status, 404);
-  assert.equal((await fetch(`${t.base}/missionaries/nope.txt`)).status, 404);
-
-  const { feedUrl } = await (await t.j("/api/admin/state", null, t.admin)).json();
-  const path = new URL(feedUrl).pathname;
+  assert.equal((await fetch(`${t.base}/m/wrong/feed.ics`)).status, 404);
+  assert.ok((await (await fetch(`${t.base}/m/secretkey123/feed.ics`)).text()).includes("Smith"));
   await t.j(`/api/booking/${token}/cancel`, {});
-  assert.ok(!(await (await fetch(t.base + path)).text()).includes("Smith")); // cancellation reaches their calendar
+  assert.ok(!(await (await fetch(`${t.base}/m/secretkey123/feed.ics`)).text()).includes("Smith")); // cancellation reaches their calendar
 
-  const off = start({ adminPassword: "" });
-  assert.equal((await fetch(`${off.base}/missionaries/${"a".repeat(32)}.ics`)).status, 404);
-  // changing the password invalidates the old link
-  const rotated = start({ adminPassword: "different" });
-  assert.equal((await fetch(rotated.base + path)).status, 404);
+  const off = start({ missionaryKey: "" });
+  assert.equal((await fetch(`${off.base}/m/secretkey123/feed.ics`)).status, 404);
+  assert.equal((await (await off.j("/api/admin/state", null, off.admin)).json()).pageUrl, null);
 });
 
 test("admin can add a visit (no texts), and cannot double-book; CSV neutralises formulas", async () => {

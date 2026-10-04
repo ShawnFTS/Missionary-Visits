@@ -11,14 +11,9 @@ main, .hero-inner { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
 h1, h2, .serif { font-family: Georgia, "Times New Roman", serif; }
 
 /* ---- hero ---- */
-.hero { background: linear-gradient(180deg, #243f66 0%, #1b3354 100%); color: #fff; padding: 28px 0 32px; text-align: center; }
+.hero { background: linear-gradient(180deg, rgba(20,38,64,.78) 0%, rgba(20,38,64,.9) 100%), #1b3354 url(/images/missionaries.jpg) center 22% / cover no-repeat; color: #fff; padding: 56px 0 52px; text-align: center; }
 .hero-inner { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.portraits { display: flex; gap: 14px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
-.portraits figure { margin: 0; }
-.portraits img { display: block; border-radius: 10px; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 6px 18px rgba(0,0,0,.35); background: #fff; object-fit: cover; }
-.portraits .christ img { width: 150px; height: 190px; }
-.portraits .missionaries img { width: 270px; max-width: 100%; height: 190px; }
-.hero h1 { margin: 0; font-size: 1.9rem; line-height: 1.2; font-weight: 600; }
+.hero h1 { margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,.4); font-size: 1.9rem; line-height: 1.2; font-weight: 600; }
 .hero p { margin: 0; max-width: 40rem; color: #dbe5f3; }
 .verse { font-family: Georgia, serif; font-style: italic; color: #f1dca4 !important; font-size: .95rem; }
 
@@ -52,10 +47,9 @@ h1, h2, .serif { font-family: Georgia, "Times New Roman", serif; }
 
 @media (max-width: 640px) {
   html { font-size: 17px; }
+  .hero { padding: 36px 0 34px; }
   .hero h1 { font-size: 1.5rem; }
-  .portraits .christ img { width: 110px; height: 140px; }
-  .portraits .missionaries img { width: 210px; height: 140px; }
-  .week { grid-template-columns: 1fr; }
+      .week { grid-template-columns: 1fr; }
   .day { display: grid; grid-template-columns: 82px 1fr 1fr; gap: 8px; align-items: center; padding: 8px 10px; }
   .day-head { display: block; margin: 0; }
   .day-head span { display: block; }
@@ -75,6 +69,8 @@ label.field input:focus { outline: 2px solid var(--navy-2); border-color: var(--
 .reminders legend { font-weight: 600; padding: 0 6px; }
 .check { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-weight: 500; cursor: pointer; }
 .check input { width: 22px; height: 22px; accent-color: var(--navy); }
+.reminders .master { padding: 2px 0; font-weight: 600; }
+.fine.lead { margin: 8px 0 2px; }
 .fine { font-size: .8rem; color: var(--muted); margin: 6px 0 0; }
 .err { color: var(--danger); font-weight: 600; margin: 0 0 12px; min-height: 0; }
 .actions { display: flex; gap: 10px; }

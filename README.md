@@ -31,7 +31,6 @@ npm test
 | `WARDS` | Harmony, Overland Trails, Springwater, White Hills, Cedar Fort, Fairfield | Ward rotation, comma separated; each Sunday–Saturday week belongs to the next ward |
 | `ROTATION_START` | `2026-09-20` | The Sunday that begins the first ward's week |
 | `MISSIONARY_PHONE`, `HELP_NAME`, `HELP_PHONE` | from the old sign-up doc | Shown at the bottom of the page |
-| `MISSIONARY_FEED_TOKEN` | derived from `ADMIN_PASSWORD` | Optional fixed secret for the missionary calendar link. Changing it (or the admin password) invalidates the old link. |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |

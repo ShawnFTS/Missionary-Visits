@@ -24,4 +24,7 @@ export function cleanAddress(raw) {
   return s ? s.slice(0, 200) : null;
 }
 
-export const fmtPhone = (e164) => `(${e164.slice(2, 5)}) ${e164.slice(5, 8)}-${e164.slice(8)}`;
+export const formatPhone = (e164) => {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+};

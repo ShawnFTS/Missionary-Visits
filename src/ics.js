@@ -1,7 +1,7 @@
 import { compactUtc } from "./time.js";
-import { displayFamily } from "./people.js";
+import { displayFamily, formatPhone } from "./people.js";
 
-const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 
 // RFC 5545: lines over 75 octets are folded with CRLF + space.
 function fold(line) {
@@ -65,32 +65,43 @@ export function googleCalendarUrl(b, cfg) {
   return `https://calendar.google.com/calendar/render?${q}`;
 }
 
-// The missionaries' subscribable calendar: every upcoming visit with the family's
-// phone and address, which is exactly why the URL is a secret and why the public
-// page and the family's own .ics never carry either.
-export function buildFeed(rows, cfg) {
-  const lines = [
-    "BEGIN:VCALENDAR", "VERSION:2.0",
-    "PRODID:-//Eagle Mountain West Stake//Missionary Member Visits//EN",
-    "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "X-WR-CALNAME:Missionary Member Visits",
-    `X-WR-TIMEZONE:${cfg.tz}`,
-    "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+// The missionaries' calendar: every visit they are hosted at, with the family's
+// phone number in the details. One VEVENT per booking; also served as a live feed.
+export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now()) {
+  const alarm = (trigger, text) => [
+    "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(text)}`, `TRIGGER:${trigger}`, "END:VALARM",
   ];
-  for (const b of rows) {
-    const desc = [`${displayFamily(b.family)}`, b.phone_display && `Phone: ${b.phone_display}`, b.address && `Address: ${b.address}`,
-      b.address && `Directions (Google Maps): ${googleMapsUrl(b.address)}`, b.address && `Directions (Apple Maps): ${appleMapsUrl(b.address)}`, b.ward && `${b.ward} Ward`]
-      .filter(Boolean).join("\n");
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Eagle Mountain West Stake//Missionary Member Visits//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:Missionary visits",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    "X-PUBLISHED-TTL:PT1H",
+  ];
+  for (const b of bookings) {
+    const ward = wardOf(b);
+    const desc = [
+      `Family: ${displayFamily(b.family)}`,
+      `Phone: ${formatPhone(b.phone)}`,
+      b.address ? `Address: ${b.address}` : null,
+      b.address ? `Directions (Google Maps): ${googleMapsUrl(b.address)}` : null,
+      b.address ? `Directions (Apple Maps): ${appleMapsUrl(b.address)}` : null,
+      ward ? `Ward: ${ward}` : null,
+    ].filter(Boolean).join("\n");
     lines.push(
       "BEGIN:VEVENT",
-      `UID:feed-${b.token}@missionary-visits`,
-      `DTSTAMP:${compactUtc(b.created_at)}`,
+      `UID:mvisit-${b.token}@missionary-visits`,
+      `DTSTAMP:${compactUtc(nowMs)}`,
       `DTSTART:${compactUtc(b.start_utc)}`,
       `DTEND:${compactUtc(bookingEnd(b, cfg.minutes))}`,
-      `SUMMARY:${esc(`Visit: ${displayFamily(b.family)}${b.ward ? ` (${b.ward})` : ""}`)}`,
+      `SUMMARY:${esc(`Visit — ${displayFamily(b.family)}`)}`,
       ...(b.address ? [`LOCATION:${esc(b.address)}`, `URL:${googleMapsUrl(b.address)}`] : []),
       `DESCRIPTION:${esc(desc)}`,
-      "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Visit in 1 hour", "TRIGGER:-PT1H", "END:VALARM",
+      "STATUS:CONFIRMED",
+      ...alarm("-PT1H", "Visit in 1 hour"),
       "END:VEVENT",
     );
   }

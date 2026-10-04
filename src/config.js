@@ -10,11 +10,29 @@ const DEFAULT_SCHEDULE = {
   6: ["15:00", "15:45"],
 };
 
+// Short permalink codes for each ward (/SP, /FF, ...). Override with WARD_CODES="HA=Harmony,OT=Overland Trails".
+const DEFAULT_CODES = { HA: "Harmony", OT: "Overland Trails", SP: "Springwater", WH: "White Hills", CF: "Cedar Fort", FF: "Fairfield" };
+function wardCodes(wards, raw) {
+  const out = {};
+  if (raw) for (const part of raw.split(",")) { const [k, ...v] = part.split("="); if (k && v.length) out[k.trim().toUpperCase()] = v.join("=").trim(); }
+  else {
+    for (const [k, v] of Object.entries(DEFAULT_CODES)) if (wards.includes(v)) out[k] = v;
+    // Any ward not covered above: initials ("Mill Creek" -> MC) or first two letters.
+    for (const w of wards) {
+      if (Object.values(out).includes(w)) continue;
+      const words = w.split(/\s+/);
+      const code = (words.length > 1 ? words.map((x) => x[0]).join("") : w.slice(0, 2)).toUpperCase();
+      if (!out[code]) out[code] = w;
+    }
+  }
+  return out;
+}
+
 export const slotTimesOn = (cfg, dow) => cfg.schedule[dow] || [];
 export const allTimes = (cfg) => [...new Set(Object.values(cfg.schedule).flat())].sort();
 
 export function loadConfig(env = process.env) {
-  return {
+  const cfg = {
     port: Number(env.PORT) || 3000,
     tz: env.SITE_TZ || "America/Denver",
     // Start times by day of week (0 = Sunday), 24-hour. Defaults are the stake's
@@ -27,11 +45,13 @@ export function loadConfig(env = process.env) {
     // `rotationStart` is the first ward's; the list repeats forever.
     rotationStart: env.ROTATION_START || "2026-09-20",
     wards: (env.WARDS || "Harmony,Overland Trails,Springwater,White Hills,Cedar Fort,Fairfield").split(",").map((s) => s.trim()).filter(Boolean),
+    wardCodes: null, // filled in below from wards + WARD_CODES
     missionaryPhone: env.MISSIONARY_PHONE ?? "385-233-7693",
     helpName: env.HELP_NAME ?? "Shawn Sandberg",
     helpPhone: env.HELP_PHONE ?? "801-404-4111",
     adminPassword: env.ADMIN_PASSWORD || "",
-    feedToken: env.MISSIONARY_FEED_TOKEN || "", // optional; default is derived from ADMIN_PASSWORD
+    // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
+    missionaryKey: env.MISSIONARY_KEY || "",
     dataDir: env.DATA_DIR || "./data",
     selfUrl: (env.SELF_URL || "").replace(/\/$/, ""),
     twilio: {
@@ -41,4 +61,6 @@ export function loadConfig(env = process.env) {
       service: env.TWILIO_MESSAGING_SERVICE_SID || "",
     },
   };
+  cfg.wardCodes = wardCodes(cfg.wards, env.WARD_CODES);
+  return cfg;
 }

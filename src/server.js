@@ -3,9 +3,9 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { zonedToUtc, fmtDay, fmtTime, isDate, todayInZone, dowOf, sundayOf } from "./time.js";
-import { slotProblem, buildWeek, wardForWeek } from "./slots.js";
-import { cleanFamily, normalizePhone, maskPhone, displayFamily, cleanAddress, fmtPhone } from "./people.js";
-import { buildIcs, buildFeed, googleCalendarUrl } from "./ics.js";
+import { slotProblem, buildWeek, wardForWeek, nextWardWeek } from "./slots.js";
+import { cleanFamily, normalizePhone, maskPhone, displayFamily, cleanAddress, formatPhone } from "./people.js";
+import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
 import * as analytics from "./analytics.js";
 import { allTimes, slotTimesOn } from "./config.js";
@@ -147,6 +147,43 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     res.json({ ok: true });
   });
 
+  // ---- missionaries ---------------------------------------------------
+  // A private link, /m/<key>: the one place phone numbers are shown outside admin.
+  // Off entirely until MISSIONARY_KEY is set. The key is the only credential.
+  const upcoming = () => db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(now() - 3 * 3600_000);
+  const wardOf = (b) => wardForWeek(cfg, sundayOf(b.slot_date));
+  function requireKey(req, res, next) {
+    if (!cfg.missionaryKey || !same(String(req.params.key), cfg.missionaryKey)) return res.status(404).send("Not found");
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    next();
+  }
+  const calHeaders = (res, name) => res.set({ "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `inline; filename="${name}"` });
+
+  app.get("/m/:key", requireKey, (req, res) => res.sendFile(path.join(root, "private", "missionaries.html")));
+
+  app.get("/api/m/:key/visits", requireKey, (req, res) => {
+    res.json({
+      visits: upcoming().map((b) => ({
+        id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address, ward: wardOf(b),
+        dayLabel: fmtDay(b.slot_date, { weekday: "long", month: "short", day: "numeric" }), timeLabel: fmtTime(b.slot_time),
+        week: sundayOf(b.slot_date),
+      })),
+    });
+  });
+
+  // ?ids=1,2,3 for a picked set; no ids = everything upcoming.
+  app.get("/api/m/:key/visits.ics", requireKey, (req, res) => {
+    const ids = req.query.ids ? new Set(String(req.query.ids).split(",").map(Number).filter(Number.isInteger)) : null;
+    const list = upcoming().filter((b) => !ids || ids.has(b.id));
+    calHeaders(res, "missionary-visits.ics").set("Content-Disposition", 'attachment; filename="missionary-visits.ics"');
+    res.send(buildMissionaryIcs(list, cfg, wardOf, now()));
+  });
+
+  // Subscribe once (webcal://…/m/<key>/feed.ics); new and cancelled visits follow automatically.
+  app.get("/m/:key/feed.ics", requireKey, (req, res) => {
+    calHeaders(res, "feed.ics").send(buildMissionaryIcs(upcoming(), cfg, wardOf, now()));
+  });
+
   // ---- admin ----------------------------------------------------------
   // Off entirely until ADMIN_PASSWORD is set; one shared password, because the
   // person running this is one ward mission leader, not a staff of people.
@@ -160,28 +197,12 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
 
   app.get("/admin", requireAdmin, (req, res) => res.sendFile(path.join(root, "private", "admin.html")));
 
-  // The missionaries' calendar link. Derived from the admin password so there is
-  // nothing extra to configure; change the password and the old link stops working.
-  const feedToken = () => cfg.feedToken || (cfg.adminPassword
-    ? crypto.createHmac("sha256", cfg.adminPassword).update("missionary-feed").digest("base64url").slice(0, 32) : "");
-  const wardOf = (date) => wardForWeek(cfg, sundayOf(date));
-
-  app.get("/missionaries/:file", (req, res) => {
-    const m = /^([A-Za-z0-9_-]+)\.ics$/.exec(req.params.file);
-    const tok = feedToken();
-    if (!tok || !m || !same(m[1], tok)) return res.status(404).send("Not found");
-    const rows = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(now() - 2 * 86400_000)
-      .map((b) => ({ ...b, phone_display: fmtPhone(b.phone), ward: wardOf(b.slot_date) }));
-    res.set({ "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer" });
-    res.send(buildFeed(rows, cfg));
-  });
-
   app.get("/api/admin/state", requireAdmin, (req, res) => {
     const t = now();
     const bookings = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(t - 6 * 3600_000)
       .map((b) => ({
-        id: b.id, family: displayFamily(b.family), phone: fmtPhone(b.phone), address: b.address,
-        weekStart: sundayOf(b.slot_date), ward: wardOf(b.slot_date),
+        id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address,
+        weekStart: sundayOf(b.slot_date), ward: wardOf(b),
         dayLabel: fmtDay(b.slot_date, { weekday: "short", month: "short", day: "numeric" }),
         timeLabel: fmtTime(b.slot_time), remindDay: !!b.remind_day, remindHour: !!b.remind_hour, smsError: b.sms_error,
       }));
@@ -189,10 +210,12 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
       .filter((x) => x.slot_date >= todayInZone(t, cfg.tz))
       .map((x) => ({ date: x.slot_date, time: x.slot_time, label: `${fmtDay(x.slot_date)} at ${fmtTime(x.slot_time)}` }));
     const base = cfg.selfUrl || `${req.protocol}://${req.get("host")}`;
-    const feedUrl = `${base}/missionaries/${feedToken()}.ics`;
+    // The missionaries' private page and live feed (/m/<MISSIONARY_KEY>); nothing to show until the key is set.
+    const feedUrl = cfg.missionaryKey ? `${base}/m/${cfg.missionaryKey}/feed.ics` : null;
     res.json({
+      pageUrl: cfg.missionaryKey ? `${base}/m/${cfg.missionaryKey}` : null,
       bookings, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg),
-      feedUrl, webcalUrl: feedUrl.replace(/^https?:/, "webcal:"),
+      feedUrl, webcalUrl: feedUrl && feedUrl.replace(/^https?:/, "webcal:"),
     });
   });
 
@@ -213,7 +236,7 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     const rows = db.prepare(`SELECT * FROM bookings ORDER BY slot_date, slot_time`).all();
     const head = ["Date", "Time", "Ward", "Family", "Phone", "Address", "Day reminder", "Hour reminder", "Status", "Signed up"];
     const lines = [head, ...rows.map((b) => [
-      b.slot_date, fmtTime(b.slot_time), wardOf(b.slot_date) || "", displayFamily(b.family), fmtPhone(b.phone), b.address || "",
+      b.slot_date, fmtTime(b.slot_time), wardOf(b) || "", displayFamily(b.family), formatPhone(b.phone), b.address || "",
       b.remind_day ? "yes" : "", b.remind_hour ? "yes" : "",
       b.cancelled_at ? `cancelled (${b.cancelled_by})` : "booked", new Date(b.created_at).toISOString(),
     ])].map((r) => r.map(csvCell).join(","));
@@ -249,7 +272,14 @@ export function createApp({ db, cfg, now = () => Date.now() }) {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
     res.sendFile(path.join(root, "public", "booking.html"));
   });
-  app.use(express.static(path.join(root, "public"), { index: "index.html" }));
+  // Permalinks: /SP, /FF, /OT, ... jump to that ward's next week with an open time.
+  app.get(/^\/([A-Za-z]{2})$/, (req, res, next) => {
+    const ward = cfg.wardCodes[req.params[0].toUpperCase()];
+    if (!ward) return next();
+    const start = nextWardWeek(cfg, now(), ward, activeBookings(), blockedSet());
+    res.set("Cache-Control", "no-store").redirect(302, start ? `/?start=${start}` : "/");
+  });
+  app.use(express.static(path.join(root, "public"), { index: "index.html", extensions: ["html"] }));
   app.use((req, res) => res.status(404).send("Not found"));
   app.use((err, req, res, next) => {
     console.error(err);

@@ -55,9 +55,19 @@
     $("when").textContent = `${day.label}, ${day.sub} at ${slot.label}` + (state.ward ? ` · ${state.ward} Ward` : "");
     errEl.textContent = "";
     $("submit").disabled = false;
+    form.elements.textMe.checked = false;
+    form.elements.remindDay.checked = false;
+    form.elements.remindHour.checked = false;
+    $("textDetails").hidden = true;
     dlg.showModal();
     form.elements.family.focus();
   }
+
+  form.elements.textMe.addEventListener("change", () => {
+    const on = form.elements.textMe.checked;
+    $("textDetails").hidden = !on;
+    if (!on) { form.elements.remindDay.checked = false; form.elements.remindHour.checked = false; }
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -72,8 +82,8 @@
           family: form.elements.family.value,
           phone: form.elements.phone.value,
           address: form.elements.address.value,
-          remindDay: form.elements.remindDay.checked,
-          remindHour: form.elements.remindHour.checked,
+          remindDay: form.elements.textMe.checked && form.elements.remindDay.checked,
+          remindHour: form.elements.textMe.checked && form.elements.remindHour.checked,
         }),
       });
       const data = await r.json();
@@ -106,7 +116,8 @@
     method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ src: q.get("src") || "", ref: document.referrer, off: q.has("notrack") }),
   }).catch(() => {});
-  load();
+  const wanted = new URLSearchParams(location.search).get("start");
+  load(/^\d{4}-\d{2}-\d{2}$/.test(wanted || "") ? wanted : undefined);
   // Keep the sheet honest if it's left open: families sign up all day.
   setInterval(() => { if (!dlg.open && state) load(state.weekStart); }, 60_000);
 })();
