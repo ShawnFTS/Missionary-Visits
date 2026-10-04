@@ -52,6 +52,19 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
   Texting waits on Twilio's toll-free approval. (Resend/email was built and then removed at Shawn's request.)
 - 28 tests pass.
 
+## Wait-list (latest session)
+- A week with nothing bookable but real upcoming visits is `full` (`buildWeek`). The public page then shows "Join the
+  wait-list" (name, mobile, optional address, **required text-consent checkbox**); offered only when texting is set up.
+- Joining creates a `waitlist` row (one waiting spot per phone per week, max 20 per week) and a private page `/w/<token>`
+  (position, times they can take, leave button).
+- On a cancellation of a future visit: every waiting family for that week is texted first (private link), the time is
+  put in `slot_holds` for `waitlistHoldMinutes` (default 30; 0 = notify only), the public sheet shows it as "held for
+  wait-list" and refuses public bookings with a reason; waitlisters (and the admin) can book it. After the hold it opens
+  to everyone. No hold if nobody is waiting or texting isn't set up. A waiter who gets a visit any way is removed.
+  Then the missionaries are texted as before. Admin: Visits tab lists/removes waiters; Settings sets the hold.
+- Privacy policy mentions the wait-list texts. **Twilio's toll-free verification text should mention wait-list texts too.**
+- 35 tests pass.
+
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.

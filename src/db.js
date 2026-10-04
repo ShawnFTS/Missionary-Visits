@@ -53,6 +53,16 @@ export function openDb(dir) {
       id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, booking_id INTEGER,
       contact_id INTEGER, contact_name TEXT, channel TEXT NOT NULL, ok INTEGER NOT NULL, error TEXT
     );
+    -- Families waiting for a week that is full. First to hear when a visit cancels.
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id INTEGER PRIMARY KEY, token TEXT NOT NULL UNIQUE, week_start TEXT NOT NULL,
+      family TEXT NOT NULL, phone TEXT NOT NULL, address TEXT, created_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'waiting',   -- waiting | booked | left | removed
+      done_at INTEGER, booking_token TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_waiting ON waitlist(week_start, phone) WHERE status = 'waiting';
+    -- A just-cancelled time held for the wait-list for a short while before the public can take it.
+    CREATE TABLE IF NOT EXISTS slot_holds (slot_date TEXT NOT NULL, slot_time TEXT NOT NULL, until_ts INTEGER NOT NULL, PRIMARY KEY (slot_date, slot_time));
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,

@@ -17,6 +17,7 @@
     wl.hidden = !state.ward;
     wl.textContent = state.ward ? `${state.ward} Ward${state.isCurrent ? " — this week" : ""}` : "";
     $("thisWeek").hidden = state.isCurrent;
+    $("waitPanel").hidden = !(state.full && smsAvailable); // only offered when a text can actually be sent
     $("prev").disabled = !state.prev;
     $("next").disabled = !state.next;
     weekEl.replaceChildren();
@@ -37,6 +38,8 @@
           el.textContent = s.label;
           el.setAttribute("aria-label", `Sign up for ${day.label} ${day.sub} at ${s.label}`);
           el.onclick = () => openForm(day, s);
+        } else if (s.status === "held") {
+          el.innerHTML = "<span></span><small>held for wait-list</small>"; el.firstChild.textContent = s.label;
         } else if (s.status === "booked") {
           el.innerHTML = '<span class="who"></span><small></small>';
           el.firstChild.textContent = s.family + " Family"; // textContent: names are typed by strangers
@@ -96,6 +99,27 @@
     $("submit").disabled = false;
   });
 
+  // ---- wait-list ----
+  const waitDlg = $("waitDlg"), waitForm = $("waitForm");
+  $("joinWait").onclick = () => {
+    $("waitWhen").textContent = `${state.ward ? state.ward + " Ward · " : ""}week of ${state.range}`;
+    $("waitErr").textContent = ""; $("waitSubmit").disabled = false; waitDlg.showModal(); waitForm.elements.family.focus();
+  };
+  $("cancelWait").onclick = () => waitDlg.close();
+  waitForm.addEventListener("submit", async (e) => {
+    e.preventDefault(); $("waitErr").textContent = ""; $("waitSubmit").disabled = true;
+    try {
+      const r = await fetch("/api/waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        weekStart: state.weekStart, family: waitForm.elements.family.value, phone: waitForm.elements.phone.value,
+        address: waitForm.elements.address.value, consent: waitForm.elements.consent.checked }) });
+      const data = await r.json();
+      if (r.ok) { location.href = "/w/" + data.token; return; }
+      $("waitErr").textContent = data.error || "Something went wrong.";
+      if (r.status === 400 && /open times/.test(data.error || "")) { waitDlg.close(); load(state.weekStart); }
+    } catch { $("waitErr").textContent = "Couldn't reach the server. Please check your connection and try again."; }
+    $("waitSubmit").disabled = false;
+  });
+
   $("cancelDlg").onclick = () => dlg.close();
   $("thisWeek").onclick = () => load();
   $("prev").onclick = () => load(state.prev);
@@ -109,6 +133,7 @@
     if (c.missionaryPhone && c.helpPhone) contact.append(" · ");
     if (c.helpPhone) add(`Trouble with this page? ${c.helpName || "Call"} `, c.helpPhone);
     $("reminders").hidden = !smsAvailable;
+    if (state) render();
   });
   // Anonymous visit count (see src/analytics.js). ?notrack in the address hides this browser.
   const q = new URLSearchParams(location.search);
@@ -119,5 +144,5 @@
   const wanted = new URLSearchParams(location.search).get("start");
   load(/^\d{4}-\d{2}-\d{2}$/.test(wanted || "") ? wanted : undefined);
   // Keep the sheet honest if it's left open: families sign up all day.
-  setInterval(() => { if (!dlg.open && state) load(state.weekStart); }, 60_000);
+  setInterval(() => { if (!dlg.open && !$("waitDlg").open && state) load(state.weekStart); }, 60_000);
 })();

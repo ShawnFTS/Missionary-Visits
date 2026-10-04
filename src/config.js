@@ -48,6 +48,8 @@ export function loadConfig(env = process.env) {
     wardCodes: null, // filled in below from wards + WARD_CODES
     missionaryPhone: env.MISSIONARY_PHONE ?? "385-233-7693",
     // Who the missionaries' shared phone (above) is texted about; editable on /admin → Settings.
+    // Minutes a cancelled time is held for the wait-list before the public can book it (0 = no hold, just notify).
+    waitlistHoldMinutes: Number(env.WAITLIST_HOLD_MINUTES ?? 30),
     notifyCancel: true,
     notifySignup: false,
     helpName: env.HELP_NAME ?? "Shawn Sandberg",

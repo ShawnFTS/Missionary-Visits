@@ -77,6 +77,11 @@ export function validate(input) {
     if (!Number.isInteger(n) || n < 1 || n > 20) errors.push("Number of cycles must be a whole number from 1 to 20.");
     else v.rotationCycles = n;
   }
+  if (input.waitlistHoldMinutes !== undefined) {
+    const n = Number(input.waitlistHoldMinutes);
+    if (!Number.isInteger(n) || n < 0 || n > 240) errors.push("The wait-list hold must be a whole number of minutes from 0 to 240.");
+    else v.waitlistHoldMinutes = n;
+  }
   for (const k of ["notifyCancel", "notifySignup"]) if (input[k] !== undefined) v[k] = input[k] === true || input[k] === "true";
   if (input.missionaryPhone !== undefined) {
     // One number does two jobs: it is shown at the bottom of the sign-up page AND it is who gets the texts.
@@ -140,7 +145,7 @@ export function editableView(cfg) {
   }
   return {
     days: DAYS, schedule, minutes: cfg.minutes, wards: cfg.wards, rotationStart: cfg.rotationStart, rotationCycles: cfg.rotationCycles,
-    notifyCancel: cfg.notifyCancel, notifySignup: cfg.notifySignup,
+    notifyCancel: cfg.notifyCancel, notifySignup: cfg.notifySignup, waitlistHoldMinutes: cfg.waitlistHoldMinutes,
     missionaryPhone: cfg.missionaryPhone, helpName: cfg.helpName, helpPhone: cfg.helpPhone,
     ends: fmtDay(windowEnd(cfg), { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
     totalWeeks: total, weeks,

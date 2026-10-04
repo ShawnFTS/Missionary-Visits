@@ -101,3 +101,7 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line
 .back-line { text-align: center; margin: -4px 0 12px; }
 .back-line:has(button[hidden]) { display: none; }
 [hidden] { display: none !important; }
+
+.slot.held { background: var(--gold-bg); color: #7a5a14; border: 1px dashed var(--gold); }
+.slot.held small { display: block; font-size: .75rem; }
+.waitpanel { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: center; background: var(--gold-bg); border-radius: 12px; padding: 12px 14px; margin-top: 14px; text-align: center; }

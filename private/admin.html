@@ -49,6 +49,12 @@
       <div id="bookings" class="wide-tbl" style="margin-top:12px"></div>
     </section>
 
+    <section class="panel" id="waitPane">
+      <h2 class="serif">Wait-list</h2>
+      <p class="fine">Families waiting for a week that filled up. When a visit in their week cancels, they are texted first and the time is held for them (<span id="holdMin">30</span> minutes, changeable in Settings) before the public can take it.</p>
+      <div id="waitList" class="wide-tbl"></div>
+    </section>
+
     <section class="panel">
       <h2 class="serif">Add a visit</h2>
       <p class="fine">For a family who called or texted instead of using the page. They are not signed up for text reminders.</p>
@@ -166,6 +172,13 @@
       <p class="inline"><button class="btn" id="saveRot">Save rotation</button></p>
       <p class="err" id="rotMsg"></p>
       <details><summary class="fine"><strong>See every week</strong></summary><div id="weeksList" class="wide-tbl" style="max-height:320px;overflow:auto"></div></details>
+    </section>
+    <section class="panel">
+      <h2 class="serif">Wait-list</h2>
+      <label>Minutes a cancelled time is held for the wait-list before everyone can take it<br><input id="sHold" type="number" min="0" max="240" style="width:100px"></label>
+      <p class="fine">0 means no hold: the wait-list is still texted, but anyone can grab the time right away.</p>
+      <p class="inline"><button class="btn" id="saveHold">Save</button></p>
+      <p class="err" id="holdMsg"></p>
     </section>
     <section class="panel">
       <h2 class="serif">Contact info on the page</h2>
@@ -308,6 +321,22 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
   if (b.dataset.tab === "settings") loadSettings();
 }));
 
+async function loadWait() {
+  const d = await (await fetch("/api/admin/waitlist")).json();
+  $("holdMin").textContent = d.holdMinutes;
+  const box = $("waitList"); box.replaceChildren();
+  if (!d.entries.length) { box.textContent = "No one is waiting."; return; }
+  const t = el("table"); t.innerHTML = "<tr><th>Week of</th><th>Ward</th><th>Family</th><th>Phone</th><th>Joined</th><th></th></tr>"; box.append(t);
+  for (const e of d.entries) {
+    const tr = el("tr"); cell(tr, e.week); cell(tr, e.ward || "—"); cell(tr, e.family); cell(tr, e.phone); cell(tr, e.joined);
+    const td = el("td"); const b = el("button", "btn danger small", "Remove");
+    b.onclick = async () => { if (confirm(`Remove ${e.family} from the wait-list?`)) { await post(`/api/admin/waitlist/${e.id}/remove`); loadWait(); } };
+    td.append(b); tr.append(td); t.append(tr);
+  }
+}
+loadWait();
+document.querySelector('[data-tab=visits]').addEventListener("click", loadWait);
+
 let editingId = null;
 async function loadContacts() {
   const d = await (await fetch("/api/admin/contacts")).json();
@@ -386,7 +415,7 @@ function fillSettings(s) {
   });
   $("sMinutes").value = s.minutes; $("sWards").value = s.wards.join("\n"); $("sStart").value = s.rotationStart; $("sCycles").value = s.rotationCycles;
   $("sEnds").textContent = `${s.totalWeeks} weeks in all. The last day anyone can sign up for is ${s.ends}.`;
-  $("sMPhone").value = s.missionaryPhone; $("sHName").value = s.helpName; $("sHPhone").value = s.helpPhone;
+  $("sHold").value = s.waitlistHoldMinutes; $("sMPhone").value = s.missionaryPhone; $("sHName").value = s.helpName; $("sHPhone").value = s.helpPhone;
   const t = el("table"); t.innerHTML = "<tr><th>#</th><th>Week of</th><th>Ward</th></tr>";
   for (const w of s.weeks) { const tr = el("tr"); cell(tr, w.n); cell(tr, w.start); cell(tr, w.ward || "—"); t.append(tr); }
   $("weeksList").replaceChildren(t);
@@ -401,6 +430,7 @@ async function saveSettings(body, msgId) {
 }
 $("saveSched").onclick = () => { const schedule = {}; document.querySelectorAll("#schedRows input").forEach((i) => schedule[i.dataset.day] = i.value); saveSettings({ schedule, minutes: $("sMinutes").value }, "schedMsg"); };
 $("saveRot").onclick = () => saveSettings({ wards: $("sWards").value, rotationStart: $("sStart").value, rotationCycles: $("sCycles").value }, "rotMsg");
+$("saveHold").onclick = () => saveSettings({ waitlistHoldMinutes: $("sHold").value }, "holdMsg");
 $("saveContact").onclick = () => saveSettings({ missionaryPhone: $("sMPhone").value, helpName: $("sHName").value, helpPhone: $("sHPhone").value }, "contactMsg");
 </script>
 </body>

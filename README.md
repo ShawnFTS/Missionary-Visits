@@ -11,6 +11,7 @@ A plain sign-up sheet for hosting the missionaries. No ads, no accounts, no them
 - `/admin` (password): visits grouped by week and ward, add a visit by hand, cancel, block times, CSV export,
   the **missionary calendar link** (subscribe once; new sign-ups and cancellations flow to their phones), and
   **visitor stats** (anonymous: one cookie per browser, device/browser type, where visitors came from; no IPs or names).
+- **Wait-list:** when a week is full, the page offers "Join the wait-list" (family name, mobile, text consent; shown only when texting is set up). When a visit in that week cancels, waiting families are texted first with a private link, and the freed time is **held for them** (30 minutes by default; `/admin` → Settings → Wait-list) before it opens to everyone. First to tap Book wins.
 - Tag links to see where visitors come from: `/?src=harmony`. Open `/?notrack` on your own devices so you don't count.
 
 ## Run it
@@ -40,6 +41,7 @@ The cancelled time opens up on the sign-up page for others.
 | `WARDS` | Harmony, Overland Trails, Springwater, White Hills, Cedar Fort, Fairfield | Ward rotation, comma separated; each Sunday–Saturday week belongs to the next ward |
 | `ROTATION_START` | `2026-09-20` | The Sunday that begins the first ward's week |
 | `MISSIONARY_PHONE`, `HELP_NAME`, `HELP_PHONE` | from the old sign-up doc | Shown at the bottom of the page |
+| `WAITLIST_HOLD_MINUTES` | `30` | How long a just-cancelled time is held for the wait-list (0 = no hold, just notify). Editable in Settings. |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
 | `MISSIONARY_KEY` | _(unset = missionary page off)_ | Secret in the missionaries' private link `/m/<key>` (page, downloads and live calendar feed). Change it to revoke the link. |

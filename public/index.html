@@ -26,6 +26,11 @@
     </div>
     <p class="back-line"><button class="btn ghost small" id="thisWeek" hidden>← Back to this week</button></p>
     <div id="week" class="week" aria-live="polite"></div>
+    <div id="waitPanel" class="waitpanel" hidden>
+      <strong>This week is full.</strong>
+      <span>Join the wait-list and we'll text you first if a visit cancels.</span>
+      <button class="btn" id="joinWait">Join the wait-list</button>
+    </div>
     <div class="legend">
       <span><i style="background:var(--open-bg);border:1px solid #b9d9c7"></i>Open — tap to sign up</span>
       <span><i style="background:var(--booked-bg)"></i>Taken</span>
@@ -59,6 +64,27 @@
     <div class="actions">
       <button type="button" class="btn ghost" id="cancelDlg">Cancel</button>
       <button type="submit" class="btn" id="submit">Sign up</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="waitDlg">
+  <form class="dlg" id="waitForm" method="dialog" novalidate>
+    <h3>Join the wait-list</h3>
+    <p class="when" id="waitWhen"></p>
+    <label class="field">Family name
+      <input type="text" name="family" autocomplete="family-name" maxlength="50" placeholder="Smith" required>
+    </label>
+    <label class="field">Mobile number
+      <input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="(801) 555-0123" required>
+    </label>
+    <label class="field">Address <span class="fine" style="font-weight:400">(optional; include your city)</span>
+      <input type="text" name="address" autocomplete="street-address" maxlength="200" placeholder="123 Main St, Eagle Mountain, UT">
+    </label>
+    <label class="check"><input type="checkbox" name="consent"> <span>Text me if a time opens up this week. You'll get a message only when a visit cancels. Message and data rates may apply. Reply STOP to opt out. <a href="/privacy" target="_blank">Privacy</a> &middot; <a href="/terms" target="_blank">Terms</a></span></label>
+    <p class="err" id="waitErr" role="alert"></p>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="cancelWait">Cancel</button>
+      <button type="submit" class="btn" id="waitSubmit">Join</button>
     </div>
   </form>
 </dialog>

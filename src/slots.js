@@ -24,7 +24,7 @@ export function wardForWeek(cfg, sunday) {
 }
 
 // What the calendar screen draws for one week. Phone numbers never appear here.
-export function buildWeek(cfg, nowMs, startParam, bookings, blocked) {
+export function buildWeek(cfg, nowMs, startParam, bookings, blocked, holds = new Set()) {
   const today = todayInZone(nowMs, cfg.tz);
   const first = sundayOf(today);
   const last = sundayOf(windowEnd(cfg));
@@ -49,15 +49,22 @@ export function buildWeek(cfg, nowMs, startParam, bookings, blocked) {
         if (b) status = "booked";
         else if (zonedToUtc(date, time, cfg.tz) <= nowMs || date > windowEnd(cfg)) status = "past";
         else if (blocked.has(key)) status = "blocked";
-        return { time, label: fmtTime(time), status, family: b ? b.family : undefined };
+        else if (holds.has(key)) status = "held"; // just cancelled, offered to the wait-list first
+        return { time, label: fmtTime(time), status, family: b ? b.family : undefined, future: zonedToUtc(date, time, cfg.tz) > nowMs };
       }),
     });
   }
+  // "Full": nothing a family could book right now, but there are real upcoming visits (or held times) in it.
+  // A week that is just over, or just blocked out, is not full — a wait-list there would wait for nothing.
+  const slots = days.flatMap((d) => d.slots);
+  const full = !slots.some((x) => x.status === "open") && slots.some((x) => x.future && (x.status === "booked" || x.status === "held"));
+  for (const x of slots) delete x.future;
   const end = addDays(start, 6);
   return {
     weekStart: start,
     ward: wardForWeek(cfg, start),
     isCurrent: start === first,
+    full,
     range: `${fmtDay(start, { month: "short", day: "numeric" })} – ${fmtDay(end, { month: "short", day: "numeric" })}`,
     prev: start > first ? addDays(start, -7) : null,
     next: addDays(start, 7) <= windowEnd(cfg) ? addDays(start, 7) : null,

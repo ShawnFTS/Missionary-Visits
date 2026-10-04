@@ -9,6 +9,7 @@ import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
 import * as analytics from "./analytics.js";
 import * as settings from "./settings.js";
+import * as waitlist from "./waitlist.js";
 import { notifyMissionaries } from "./notify.js";
 import { makeTwilioSender } from "./sms.js";
 import { allTimes, slotTimesOn } from "./config.js";
@@ -24,7 +25,11 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   sendSms = sendSms !== undefined ? sendSms : smsConfigured(cfg) ? makeTwilioSender(cfg) : null;
   const tell = (kind, booking, by) => {
     if (kind === "cancel" && booking.start_utc <= now()) return; // nobody needs to hear about a past visit
-    notifyMissionaries({ db, cfg, sendSms, now }, kind, booking, by).catch((e) => console.error("[notify]", e));
+    (async () => {
+      // The wait-list hears first (and the freed time is held for them); then the missionaries.
+      if (kind === "cancel") await waitlist.onCancel({ db, cfg, sendSms, now }, booking);
+      await notifyMissionaries({ db, cfg, sendSms, now }, kind, booking, by);
+    })().catch((e) => console.error("[notify]", e));
   };
   const app = express();
   app.disable("x-powered-by");
@@ -68,7 +73,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
 
   app.get("/api/week", (req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(buildWeek(cfg, now(), req.query.start, activeBookings(), blockedSet()));
+    res.json(buildWeek(cfg, now(), req.query.start, activeBookings(), blockedSet(), waitlist.activeHolds(db, now())));
   });
 
   // Slow down somebody hammering the booking endpoint; in-memory is plenty here.
@@ -82,7 +87,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   };
 
   // Shared by the public form and the admin "add a visit" form. Returns { token } or { status, error }.
-  function createBooking(body, { allowReminders }) {
+  function createBooking(body, { allowReminders, bypassHold = false }) {
     const { date, time } = body || {};
     const problem = slotProblem(cfg, date, time, now());
     if (problem) return { status: 400, error: problem };
@@ -91,6 +96,8 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const phone = normalizePhone(body.phone);
     if (!phone) return { status: 400, error: "Please enter a 10-digit mobile number." };
     if (blockedSet().has(`${date} ${time}`)) return { status: 409, error: "That time is no longer available." };
+    const heldUntil = bypassHold ? null : waitlist.holdUntil(db, date, time, now());
+    if (heldUntil) return { status: 409, error: `That time just opened up and is being offered to the wait-list first. It opens to everyone in about ${Math.max(1, Math.ceil((heldUntil - now()) / 60_000))} minutes.` };
 
     const wantsText = allowReminders && smsConfigured(cfg);
     const token = crypto.randomBytes(16).toString("base64url");
@@ -107,6 +114,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
       }
       throw e;
     }
+    waitlist.markBooked(db, phone, sundayOf(date), now(), token); // got a visit by any route: stop waiting
     return { token };
   }
 
@@ -157,6 +165,62 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const done = db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'family' WHERE id = ? AND cancelled_at IS NULL`).run(now(), b.id);
     if (done.changes === 1) tell("cancel", b, "family"); // once: pressing Cancel twice must not text them twice
     res.json({ ok: true });
+  });
+
+  // ---- wait-list -------------------------------------------------------
+  app.post("/api/waitlist", (req, res) => {
+    if (limited(req.ip)) return res.status(429).json({ error: "Too many attempts. Please try again in a little while." });
+    if (!sendSms) return res.status(503).json({ error: "The wait-list isn't available yet." });
+    const b = req.body || {};
+    if (b.consent !== true) return res.status(400).json({ error: "Please tick the box to agree to be texted." });
+    const week = isDate(b.weekStart) ? buildWeek(cfg, now(), b.weekStart, activeBookings(), blockedSet(), waitlist.activeHolds(db, now())) : null;
+    if (!week || week.weekStart !== b.weekStart) return res.status(400).json({ error: "Pick a week from the calendar." });
+    if (!week.full) return res.status(400).json({ error: "There are still open times this week, so you can book one directly." });
+    const family = cleanFamily(b.family);
+    if (!family) return res.status(400).json({ error: "Please enter your family name." });
+    const phone = normalizePhone(b.phone);
+    if (!phone) return res.status(400).json({ error: "Please enter a 10-digit mobile number." });
+    const r = waitlist.join(db, { weekStart: week.weekStart, family, phone, address: cleanAddress(b.address) }, now());
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.status(201).json({ token: r.token });
+  });
+
+  const waitView = (e) => {
+    const week = buildWeek(cfg, now(), e.week_start, activeBookings(), blockedSet(), waitlist.activeHolds(db, now()));
+    const times = week.days.flatMap((d) => d.slots.filter((s) => s.status === "open" || s.status === "held").map((s) => ({
+      date: d.date, time: s.time, status: s.status,
+      dayLabel: fmtDay(d.date, { weekday: "long", month: "short", day: "numeric" }), timeLabel: s.label,
+      minutesLeft: s.status === "held" ? Math.max(1, Math.ceil((waitlist.holdUntil(db, d.date, s.time, now()) - now()) / 60_000)) : null,
+    })));
+    return {
+      family: displayFamily(e.family), status: e.status, ward: week.ward, range: week.range, weekStart: e.week_start,
+      position: e.status === "waiting" ? waitlist.position(db, e) : null, times, bookingToken: e.booking_token,
+    };
+  };
+  app.get("/api/waitlist/:token", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const e = waitlist.byToken(db, req.params.token);
+    if (!e) return res.status(404).json({ error: "We couldn't find that wait-list entry." });
+    res.json(waitView(e));
+  });
+  app.post("/api/waitlist/:token/book", (req, res) => {
+    const e = waitlist.byToken(db, req.params.token);
+    if (!e) return res.status(404).json({ error: "We couldn't find that wait-list entry." });
+    if (e.status !== "waiting") return res.status(409).json({ error: "You're no longer on the wait-list." });
+    const { date, time } = req.body || {};
+    if (!isDate(date) || sundayOf(date) !== e.week_start) return res.status(400).json({ error: "That time isn't in the week you're waiting for." });
+    const r = createBooking({ date, time, family: e.family, phone: e.phone, address: e.address }, { allowReminders: false, bypassHold: true });
+    if (r.error) return res.status(r.status).json({ error: r.status === 409 ? "Sorry, someone else just took that time." : r.error });
+    tell("signup", byToken(r.token), "family");
+    res.status(201).json({ token: r.token });
+  });
+  app.post("/api/waitlist/:token/leave", (req, res) => {
+    db.prepare(`UPDATE waitlist SET status = 'left', done_at = ? WHERE token = ? AND status = 'waiting'`).run(now(), String(req.params.token));
+    res.json({ ok: true });
+  });
+  app.get("/w/:token", (req, res) => {
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    res.sendFile(path.join(root, "public", "waitlist.html"));
   });
 
   // ---- missionaries ---------------------------------------------------
@@ -234,7 +298,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   // Admin-entered visits (a family who phoned instead of using the page). No text
   // reminders: nobody ticked the consent box.
   app.post("/api/admin/book", requireAdmin, (req, res) => {
-    const r = createBooking(req.body, { allowReminders: false });
+    const r = createBooking(req.body, { allowReminders: false, bypassHold: true }); // an admin can book a held time
     if (r.error) return res.status(r.status).json({ error: r.error });
     res.status(201).json({ ok: true });
   });
@@ -319,6 +383,21 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     if (!sendSms) return res.json({ results: ["text: not set up yet"] });
     try { await sendSms(c.phone, "Test from Missionary Visits: you'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
     catch (e) { res.json({ results: [`text: failed — ${e.message}`] }); }
+  });
+
+  app.get("/api/admin/waitlist", requireAdmin, (req, res) => {
+    res.json({
+      holdMinutes: cfg.waitlistHoldMinutes, textReady: !!sendSms,
+      entries: db.prepare(`SELECT * FROM waitlist WHERE status = 'waiting' ORDER BY week_start, id`).all().map((e) => ({
+        id: e.id, family: displayFamily(e.family), phone: formatPhone(e.phone), ward: wardForWeek(cfg, e.week_start),
+        week: fmtDay(e.week_start, { month: "short", day: "numeric" }),
+        joined: new Date(e.created_at).toLocaleString("en-US", { timeZone: cfg.tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+      })),
+    });
+  });
+  app.post("/api/admin/waitlist/:id/remove", requireAdmin, (req, res) => {
+    db.prepare(`UPDATE waitlist SET status = 'removed', done_at = ? WHERE id = ? AND status = 'waiting'`).run(now(), Number(req.params.id));
+    res.json({ ok: true });
   });
 
   app.post("/api/admin/cancel/:id", requireAdmin, (req, res) => {
