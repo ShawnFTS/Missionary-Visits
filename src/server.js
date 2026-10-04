@@ -273,7 +273,11 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
       when: new Date(l.ts).toLocaleString("en-US", { timeZone: cfg.tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
       kind: l.kind, who: l.contact_name, ok: !!l.ok, error: l.error,
     }));
-    res.json({ contacts: db.prepare(`SELECT * FROM missionary_contacts WHERE active = 1 ORDER BY name`).all().map(contactRow), textReady: !!sendSms, log });
+    const main = normalizePhone(cfg.missionaryPhone);
+    res.json({
+      main: { phone: main ? formatPhone(main) : "", raw: cfg.missionaryPhone, valid: !!main, notifyCancel: !!cfg.notifyCancel, notifySignup: !!cfg.notifySignup },
+      contacts: db.prepare(`SELECT * FROM missionary_contacts WHERE active = 1 ORDER BY name`).all().map(contactRow), textReady: !!sendSms, log,
+    });
   });
   // Notifications are texts, so a mobile number is required. Email is kept as an optional
   // contact detail for the admin's records only; nothing here sends mail.
@@ -299,6 +303,14 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   app.post("/api/admin/contacts/:id/remove", requireAdmin, (req, res) => {
     db.prepare(`UPDATE missionary_contacts SET active = 0 WHERE id = ?`).run(Number(req.params.id));
     res.json({ ok: true });
+  });
+  // Test text to the missionaries' shared phone.
+  app.post("/api/admin/notify-test", requireAdmin, async (req, res) => {
+    const to = normalizePhone(cfg.missionaryPhone);
+    if (!to) return res.json({ results: ["The missionaries' phone number in Settings isn't a valid 10-digit mobile number."] });
+    if (!sendSms) return res.json({ results: ["text: not set up yet"] });
+    try { await sendSms(to, "Test from Missionary Visits: you'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
+    catch (e) { res.json({ results: [`text: failed — ${e.message}`] }); }
   });
   // A harmless test text so setup can be checked without cancelling a real visit.
   app.post("/api/admin/contacts/:id/test", requireAdmin, async (req, res) => {

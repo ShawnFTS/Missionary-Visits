@@ -113,17 +113,21 @@
   <!-- ===== Missionaries (who gets told) ===== -->
   <div data-pane="contacts" hidden>
     <section class="panel">
-      <h2 class="serif">Missionaries to notify</h2>
-      <p>Everyone listed here gets a <strong>text right away when a visit is cancelled</strong>, with the family's name, time and phone number. The time then opens up on the sign-up page for another family. You can also choose to be texted about new sign-ups.</p>
+      <h2 class="serif">Who gets texted</h2>
+      <p>The missionaries' phone, the number shown at the bottom of the sign-up page, is texted <strong>right away when a visit is cancelled</strong>, with the family's name, time and phone number. The time then opens up on the sign-up page for another family.</p>
+      <div class="msg" id="mainBox" style="margin:10px 0"></div>
+      <p class="fine">To change that number, use <strong>Settings → Contact info on the page</strong>.</p>
       <p id="chanStatus" class="fine"></p>
+      <h3 class="serif" style="margin-top:18px">Also text other people (optional)</h3>
+      <p class="fine">For example a zone leader or a ward mission leader.</p>
       <div id="contactList" class="wide-tbl" style="margin-top:12px"></div>
     </section>
     <section class="panel">
-      <h2 class="serif" id="cFormTitle">Add a missionary</h2>
+      <h2 class="serif" id="cFormTitle">Add someone else to text</h2>
       <div class="inline">
-        <label>Name<br><input id="cName" placeholder="Elder Jones"></label>
-        <label>Mobile (gets the texts)<br><input id="cPhone" type="tel" placeholder="385-233-7693"></label>
-        <label>Email (optional, for your records)<br><input id="cEmail" type="email" placeholder="elder.jones@missionary.org"></label>
+        <label>Name<br><input id="cName" placeholder="Zone leader"></label>
+        <label>Mobile (gets the texts)<br><input id="cPhone" type="tel" placeholder="801-555-0123"></label>
+        <label>Email (optional, for your records)<br><input id="cEmail" type="email"></label>
       </div>
       <p>
         <label class="check"><input type="checkbox" id="cCancel" checked> Text them about <strong>cancellations</strong></label>
@@ -308,8 +312,20 @@ let editingId = null;
 async function loadContacts() {
   const d = await (await fetch("/api/admin/contacts")).json();
   $("chanStatus").textContent = d.textReady ? "Texting: ✓ set up" : "Texting: ✗ not set up yet. Texts start once the Twilio number is approved and its settings are added in Railway.";
+  const mb = $("mainBox"); mb.replaceChildren();
+  if (!d.main.valid) mb.append(el("strong", "", "The missionaries' phone number isn't a valid 10-digit mobile number" + (d.main.raw ? ` ("${d.main.raw}")` : " (it's blank)") + ". Fix it in Settings."));
+  else {
+    mb.append(el("strong", "", "Missionaries' phone: " + d.main.phone), el("br"));
+    for (const [key, label] of [["notifyCancel", "Text about cancellations"], ["notifySignup", "Text about new sign-ups"]]) {
+      const lab = el("label", "check"); const cb = el("input"); cb.type = "checkbox"; cb.checked = d.main[key];
+      cb.onchange = async () => { await post("/api/admin/settings", { [key]: cb.checked }); };
+      lab.append(cb, " " + label); mb.append(lab);
+    }
+    const test = el("button", "btn ghost small", "Send a test text"); test.onclick = async () => { test.disabled = true; const r = await (await post("/api/admin/notify-test")).json(); alert(r.results.join("\n")); test.disabled = false; loadContacts(); };
+    mb.append(test);
+  }
   const box = $("contactList"); box.replaceChildren();
-  if (!d.contacts.length) box.textContent = "No one yet — add the missionaries below.";
+  if (!d.contacts.length) box.textContent = "No one else added.";
   else {
     const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Mobile</th><th>Email</th><th>Texted about</th><th></th></tr>"; box.append(t);
     for (const c of d.contacts) {

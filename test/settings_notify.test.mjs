@@ -198,3 +198,46 @@ test("delivery failures and unconfigured texting are logged, never thrown at the
   assert.match((await (await ok.a(`/api/admin/contacts/${cid}/test`, {})).json()).results[0], /text: sent/);
   assert.equal(ok.sent.sms.at(-1).to, "+13852337695");
 });
+
+test("the missionaries' phone from Settings is texted without anyone being added", async () => {
+  const t = start();
+  const { token } = await (await book(t)).json();
+  await tick();
+  assert.equal(t.sent.sms.length, 0); // sign-ups off by default
+
+  await t.j(`/api/booking/${token}/cancel`, {});
+  await tick();
+  assert.equal(t.sent.sms.length, 1);
+  assert.equal(t.sent.sms[0].to, "+13852337693"); // the number already shown on the page
+
+  const d = await (await t.a("/api/admin/contacts")).json();
+  assert.deepEqual([d.main.valid, d.main.phone, d.main.notifyCancel, d.main.notifySignup], [true, "(385) 233-7693", true, false]);
+  assert.equal(d.contacts.length, 0);
+
+  // changing the number in Settings changes who is texted; toggles are saved
+  await t.a("/api/admin/settings", { missionaryPhone: "801-555-0199", notifySignup: true });
+  const { token: t2 } = await (await book(t, { time: "20:15" })).json();
+  await tick();
+  assert.equal(t.sent.sms.at(-1).to, "+18015550199");
+  assert.match(t.sent.sms.at(-1).body, /^New visit/);
+  await t.a("/api/admin/settings", { notifyCancel: false });
+  const before = t.sent.sms.length;
+  await t.j(`/api/booking/${t2}/cancel`, {});
+  await tick();
+  assert.equal(t.sent.sms.length, before);
+
+  // test button
+  assert.match((await (await t.a("/api/admin/notify-test", {})).json()).results[0], /text: sent/);
+});
+
+test("an unusable missionary phone number is reported, not texted, and never breaks a cancel", async () => {
+  const t = start();
+  await t.a("/api/admin/settings", { missionaryPhone: "call the office" });
+  const { token } = await (await book(t)).json();
+  assert.equal((await t.j(`/api/booking/${token}/cancel`, {})).status, 200);
+  await tick();
+  assert.equal(t.sent.sms.length, 0);
+  const d = await (await t.a("/api/admin/contacts")).json();
+  assert.equal(d.main.valid, false);
+  assert.match((await (await t.a("/api/admin/notify-test", {})).json()).results[0], /valid 10-digit/);
+});

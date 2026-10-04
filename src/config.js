@@ -47,6 +47,9 @@ export function loadConfig(env = process.env) {
     wards: (env.WARDS || "Harmony,Overland Trails,Springwater,White Hills,Cedar Fort,Fairfield").split(",").map((s) => s.trim()).filter(Boolean),
     wardCodes: null, // filled in below from wards + WARD_CODES
     missionaryPhone: env.MISSIONARY_PHONE ?? "385-233-7693",
+    // Who the missionaries' shared phone (above) is texted about; editable on /admin → Settings.
+    notifyCancel: true,
+    notifySignup: false,
     helpName: env.HELP_NAME ?? "Shawn Sandberg",
     helpPhone: env.HELP_PHONE ?? "801-404-4111",
     adminPassword: env.ADMIN_PASSWORD || "",

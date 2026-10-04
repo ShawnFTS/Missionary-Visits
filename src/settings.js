@@ -76,6 +76,7 @@ export function validate(input) {
     if (!Number.isInteger(n) || n < 1 || n > 20) errors.push("Number of cycles must be a whole number from 1 to 20.");
     else v.rotationCycles = n;
   }
+  for (const k of ["notifyCancel", "notifySignup"]) if (input[k] !== undefined) v[k] = input[k] === true || input[k] === "true";
   for (const [k, max] of [["missionaryPhone", 30], ["helpName", 60], ["helpPhone", 30]]) if (input[k] !== undefined) v[k] = text(input[k], max);
   return { errors, values: v };
 }
@@ -131,6 +132,7 @@ export function editableView(cfg) {
   }
   return {
     days: DAYS, schedule, minutes: cfg.minutes, wards: cfg.wards, rotationStart: cfg.rotationStart, rotationCycles: cfg.rotationCycles,
+    notifyCancel: cfg.notifyCancel, notifySignup: cfg.notifySignup,
     missionaryPhone: cfg.missionaryPhone, helpName: cfg.helpName, helpPhone: cfg.helpPhone,
     ends: fmtDay(windowEnd(cfg), { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
     totalWeeks: total, weeks,

@@ -26,8 +26,8 @@ npm test
 `/admin` → **Settings** edits the schedule (times per day), visit length, ward rotation (order, start Sunday, number of
 cycles) and the contact info shown on the page. Changes apply immediately and survive restarts; they override the
 environment defaults below. They never move, hide or cancel a family who has already signed up.
-`/admin` → **Missionaries** keeps the list of missionaries (name, mobile, optional email for your records) who are **texted**
-when a visit is cancelled (and optionally when one is booked), using the same Twilio number as the family reminders.
+`/admin` → **Missionaries**: the missionaries' phone (the number on the bottom of the page, set in Settings) is **texted**
+when a visit is cancelled, with no setup beyond that number; you can also add other people (name + mobile) to text (and optionally when one is booked), using the same Twilio number as the family reminders.
 The cancelled time opens up on the sign-up page for others.
 
 ## Settings (environment variables, all optional)
