@@ -36,8 +36,10 @@ export function todayInZone(ms, tz) {
 }
 
 export function isDate(s) {
-  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
-    new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  // "2026-13-45" is the right shape but not a date; toISOString() would throw on it.
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 export function addDays(date, n) {

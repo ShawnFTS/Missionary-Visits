@@ -63,6 +63,18 @@ export function openDb(dir) {
     CREATE UNIQUE INDEX IF NOT EXISTS ux_waiting ON waitlist(week_start, phone) WHERE status = 'waiting';
     -- A just-cancelled time held for the wait-list for a short while before the public can take it.
     CREATE TABLE IF NOT EXISTS slot_holds (slot_date TEXT NOT NULL, slot_time TEXT NOT NULL, until_ts INTEGER NOT NULL, PRIMARY KEY (slot_date, slot_time));
+    -- What the missionaries plan to teach, what they taught, what the family committed to, and when
+    -- they will follow up. Private: only the missionary page and admin ever read this, never the
+    -- family's own link, the public sheet, or any text message. One row per visit.
+    CREATE TABLE IF NOT EXISTS visit_notes (
+      booking_id INTEGER PRIMARY KEY,
+      planned TEXT, taught TEXT, commitments TEXT,
+      followup_date TEXT,        -- local calendar date in the stake's zone, or NULL
+      followup_time TEXT,        -- local "HH:MM", or NULL for an all-day reminder
+      followup_utc INTEGER,      -- instant for a timed follow-up
+      updated_at INTEGER NOT NULL, updated_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_notes_followup ON visit_notes(followup_date);
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,

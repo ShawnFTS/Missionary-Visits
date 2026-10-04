@@ -10,6 +10,7 @@ import { smsConfigured } from "./sms.js";
 import * as analytics from "./analytics.js";
 import * as settings from "./settings.js";
 import * as waitlist from "./waitlist.js";
+import * as notes from "./notes.js";
 import { notifyMissionaries } from "./notify.js";
 import { makeTwilioSender } from "./sms.js";
 import { allTimes, slotTimesOn } from "./config.js";
@@ -28,6 +29,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     (async () => {
       // The wait-list hears first (and the freed time is held for them); then the missionaries.
       if (kind === "cancel") await waitlist.onCancel({ db, cfg, sendSms, now }, booking);
+      if (by === "missionary") return; // they just did it themselves; no need to text them about it
       await notifyMissionaries({ db, cfg, sendSms, now }, kind, booking, by);
     })().catch((e) => console.error("[notify]", e));
   };
@@ -44,6 +46,37 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   const activeBookings = () => db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL`).all();
   const blockedSet = () => new Set(db.prepare(`SELECT slot_date, slot_time FROM blocks`).all().map((r) => `${r.slot_date} ${r.slot_time}`));
   const byToken = (t) => db.prepare(`SELECT * FROM bookings WHERE token = ?`).get(String(t));
+  const byId = (id) => db.prepare(`SELECT * FROM bookings WHERE id = ?`).get(Number(id));
+
+  // Closing a time takes it off the public sheet (a ward activity, a transfer day, anything); opening puts it back.
+  // Shared by the admin screen and the missionaries' page. A time a family already holds can't be closed.
+  const blockList = () => db.prepare(`SELECT * FROM blocks ORDER BY slot_date, slot_time`).all()
+    .filter((x) => x.slot_date >= todayInZone(now(), cfg.tz))
+    .map((x) => ({ date: x.slot_date, time: x.slot_time, label: `${fmtDay(x.slot_date)} at ${fmtTime(x.slot_time)}` }));
+  function blockTime(body) {
+    const { date, time } = body || {};
+    if (!isDate(date) || !slotTimesOn(cfg, dowOf(date)).includes(time)) return { status: 400, error: "Pick a date and a time." };
+    if (db.prepare(`SELECT 1 FROM bookings WHERE slot_date = ? AND slot_time = ? AND cancelled_at IS NULL`).get(date, time)) {
+      return { status: 409, error: "A family has already signed up for that time. Cancel their visit first." };
+    }
+    db.prepare(`INSERT OR IGNORE INTO blocks (slot_date, slot_time) VALUES (?, ?)`).run(date, time);
+    return { ok: true };
+  }
+  const unblockTime = (body) => db.prepare(`DELETE FROM blocks WHERE slot_date = ? AND slot_time = ?`).run(String(body?.date), String(body?.time));
+
+  // Cancel keeps the record (the time reopens; the wait-list and missionaries hear once).
+  // Delete is cancel plus erasing the record and its notes, for mistakes and test entries.
+  // Neither texts the family: they did not opt in to that, so whoever acts should call them.
+  function cancelBooking(b, by) {
+    const done = db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = ? WHERE id = ? AND cancelled_at IS NULL`).run(now(), by, b.id);
+    if (done.changes === 1) tell("cancel", b, by);
+    return done.changes === 1;
+  }
+  function deleteBooking(b, by) {
+    cancelBooking(b, by); // frees the time and tells the wait-list properly before the row goes
+    notes.remove(db, b.id);
+    db.prepare(`DELETE FROM bookings WHERE id = ?`).run(b.id);
+  }
 
   // ---- public ---------------------------------------------------------
   app.get("/healthz", (req, res) => { db.prepare("SELECT 1").get(); res.send("ok"); }); // Railway checks this before switching traffic
@@ -237,14 +270,60 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
 
   app.get("/m/:key", requireKey, (req, res) => res.sendFile(path.join(root, "private", "missionaries.html")));
 
+  // Visits from the last 60 days that already happened, newest first: where "what was taught" gets written.
+  const recent = () => db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc <= ? AND start_utc > ? ORDER BY start_utc DESC LIMIT 100`)
+    .all(now() - 3 * 3600_000, now() - 60 * 86400_000);
+  const visitRow = (b, n, dayOpts = { weekday: "long", month: "short", day: "numeric" }) => ({
+    id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address, ward: wardOf(b),
+    dayLabel: fmtDay(b.slot_date, dayOpts), timeLabel: fmtTime(b.slot_time), week: sundayOf(b.slot_date),
+    notes: n || { ...notes.EMPTY },
+  });
+
   app.get("/api/m/:key/visits", requireKey, (req, res) => {
-    res.json({
-      visits: upcoming().map((b) => ({
-        id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address, ward: wardOf(b),
-        dayLabel: fmtDay(b.slot_date, { weekday: "long", month: "short", day: "numeric" }), timeLabel: fmtTime(b.slot_time),
-        week: sundayOf(b.slot_date),
-      })),
-    });
+    const up = upcoming(), past = recent();
+    const n = notes.forBookings(db, [...up, ...past].map((b) => b.id));
+    res.json({ visits: up.map((b) => visitRow(b, n.get(b.id))), recent: past.map((b) => visitRow(b, n.get(b.id))) });
+  });
+
+  // Open or close times from the missionaries' own page: same rules as the admin screen.
+  app.get("/api/m/:key/times", requireKey, (req, res) => {
+    const opt = (v) => ({ value: v, label: fmtTime(v) });
+    // byDay[0..6] (Sunday = 0): the times actually offered that weekday, so the form only lists real choices.
+    const byDay = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, slotTimesOn(cfg, d).map(opt)]));
+    res.json({ times: allTimes(cfg).map(opt), byDay, blocks: blockList() });
+  });
+  app.post("/api/m/:key/block", requireKey, (req, res) => {
+    const r = blockTime(req.body);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ ok: true, blocks: blockList() });
+  });
+  app.post("/api/m/:key/unblock", requireKey, (req, res) => {
+    unblockTime(req.body);
+    res.json({ ok: true, blocks: blockList() });
+  });
+
+  // Notes, cancel and delete from the missionaries' own page (the key is the credential).
+  const liveVisit = (req, res) => {
+    const b = byId(req.params.id);
+    if (!b) { res.status(404).json({ error: "That visit isn't there any more." }); return null; }
+    return b;
+  };
+  app.put("/api/m/:key/visits/:id/notes", requireKey, (req, res) => {
+    const b = liveVisit(req, res); if (!b) return;
+    if (b.cancelled_at != null) return res.status(409).json({ error: "That visit was cancelled." });
+    const r = notes.save(db, cfg, b.id, req.body, now(), "missionary");
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true, notes: notes.get(db, b.id) });
+  });
+  app.post("/api/m/:key/visits/:id/cancel", requireKey, (req, res) => {
+    const b = liveVisit(req, res); if (!b) return;
+    cancelBooking(b, "missionary");
+    res.json({ ok: true });
+  });
+  app.post("/api/m/:key/visits/:id/delete", requireKey, (req, res) => {
+    const b = liveVisit(req, res); if (!b) return;
+    deleteBooking(b, "missionary");
+    res.json({ ok: true });
   });
 
   // ?ids=1,2,3 for a picked set; no ids = everything upcoming.
@@ -252,12 +331,13 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const ids = req.query.ids ? new Set(String(req.query.ids).split(",").map(Number).filter(Number.isInteger)) : null;
     const list = upcoming().filter((b) => !ids || ids.has(b.id));
     calHeaders(res, "missionary-visits.ics").set("Content-Disposition", 'attachment; filename="missionary-visits.ics"');
-    res.send(buildMissionaryIcs(list, cfg, wardOf, now()));
+    // A hand-picked download is just those visits; "everything" also carries the follow-up reminders.
+    res.send(buildMissionaryIcs(list, cfg, wardOf, now(), ids ? [] : notes.followups(db, cfg, now())));
   });
 
   // Subscribe once (webcal://…/m/<key>/feed.ics); new and cancelled visits follow automatically.
   app.get("/m/:key/feed.ics", requireKey, (req, res) => {
-    calHeaders(res, "feed.ics").send(buildMissionaryIcs(upcoming(), cfg, wardOf, now()));
+    calHeaders(res, "feed.ics").send(buildMissionaryIcs(upcoming(), cfg, wardOf, now(), notes.followups(db, cfg, now())));
   });
 
   // ---- admin ----------------------------------------------------------
@@ -275,22 +355,25 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
 
   app.get("/api/admin/state", requireAdmin, (req, res) => {
     const t = now();
-    const bookings = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(t - 6 * 3600_000)
-      .map((b) => ({
-        id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address,
-        weekStart: sundayOf(b.slot_date), ward: wardOf(b),
-        dayLabel: fmtDay(b.slot_date, { weekday: "short", month: "short", day: "numeric" }),
-        timeLabel: fmtTime(b.slot_time), remindDay: !!b.remind_day, remindHour: !!b.remind_hour, smsError: b.sms_error,
-      }));
-    const blocks = db.prepare(`SELECT * FROM blocks ORDER BY slot_date, slot_time`).all()
-      .filter((x) => x.slot_date >= todayInZone(t, cfg.tz))
-      .map((x) => ({ date: x.slot_date, time: x.slot_time, label: `${fmtDay(x.slot_date)} at ${fmtTime(x.slot_time)}` }));
+    const upRows = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc > ? ORDER BY start_utc`).all(t - 6 * 3600_000);
+    const pastRows = db.prepare(`SELECT * FROM bookings WHERE cancelled_at IS NULL AND start_utc <= ? AND start_utc > ? ORDER BY start_utc DESC LIMIT 100`).all(t - 6 * 3600_000, t - 60 * 86400_000);
+    const noteMap = notes.forBookings(db, [...upRows, ...pastRows].map((b) => b.id));
+    const row = (b) => ({
+      id: b.id, family: displayFamily(b.family), phone: formatPhone(b.phone), address: b.address,
+      weekStart: sundayOf(b.slot_date), ward: wardOf(b),
+      dayLabel: fmtDay(b.slot_date, { weekday: "short", month: "short", day: "numeric" }),
+      timeLabel: fmtTime(b.slot_time), remindDay: !!b.remind_day, remindHour: !!b.remind_hour, smsError: b.sms_error,
+      notes: noteMap.get(b.id) || { ...notes.EMPTY },
+    });
+    const bookings = upRows.map(row);
+    const recentVisits = pastRows.map(row);
+    const blocks = blockList();
     const base = cfg.selfUrl || `${req.protocol}://${req.get("host")}`;
     // The missionaries' private page and live feed (/m/<MISSIONARY_KEY>); nothing to show until the key is set.
     const feedUrl = cfg.missionaryKey ? `${base}/m/${cfg.missionaryKey}/feed.ics` : null;
     res.json({
       pageUrl: cfg.missionaryKey ? `${base}/m/${cfg.missionaryKey}` : null,
-      bookings, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg),
+      bookings, recent: recentVisits, blocks, times: allTimes(cfg).map((v) => ({ value: v, label: fmtTime(v) })), smsAvailable: smsConfigured(cfg),
       feedUrl, webcalUrl: feedUrl && feedUrl.replace(/^https?:/, "webcal:"),
     });
   });
@@ -401,25 +484,31 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   });
 
   app.post("/api/admin/cancel/:id", requireAdmin, (req, res) => {
-    const b = db.prepare(`SELECT * FROM bookings WHERE id = ?`).get(Number(req.params.id));
-    const done = db.prepare(`UPDATE bookings SET cancelled_at = ?, cancelled_by = 'admin' WHERE id = ? AND cancelled_at IS NULL`).run(now(), Number(req.params.id));
-    if (b && done.changes === 1) tell("cancel", b, "admin");
+    const b = byId(req.params.id);
+    if (b) cancelBooking(b, "admin");
     res.json({ ok: true });
+  });
+  app.post("/api/admin/delete/:id", requireAdmin, (req, res) => {
+    const b = byId(req.params.id);
+    if (b) deleteBooking(b, "admin");
+    res.json({ ok: true });
+  });
+  app.put("/api/admin/visits/:id/notes", requireAdmin, (req, res) => {
+    const b = byId(req.params.id);
+    if (!b) return res.status(404).json({ error: "That visit isn't there any more." });
+    const r = notes.save(db, cfg, b.id, req.body, now(), "admin");
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true, notes: notes.get(db, b.id) });
   });
 
   app.post("/api/admin/block", requireAdmin, (req, res) => {
-    const { date, time } = req.body || {};
-    if (!isDate(date) || !slotTimesOn(cfg, dowOf(date)).includes(time)) return res.status(400).json({ error: "Pick a date and a time." });
-    if (db.prepare(`SELECT 1 FROM bookings WHERE slot_date = ? AND slot_time = ? AND cancelled_at IS NULL`).get(date, time)) {
-      return res.status(409).json({ error: "A family has already signed up for that time. Cancel their visit first." });
-    }
-    db.prepare(`INSERT OR IGNORE INTO blocks (slot_date, slot_time) VALUES (?, ?)`).run(date, time);
+    const r = blockTime(req.body);
+    if (r.error) return res.status(r.status).json({ error: r.error });
     res.json({ ok: true });
   });
 
   app.post("/api/admin/unblock", requireAdmin, (req, res) => {
-    const { date, time } = req.body || {};
-    db.prepare(`DELETE FROM blocks WHERE slot_date = ? AND slot_time = ?`).run(String(date), String(time));
+    unblockTime(req.body);
     res.json({ ok: true });
   });
 

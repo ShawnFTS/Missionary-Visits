@@ -1,4 +1,4 @@
-import { compactUtc } from "./time.js";
+import { compactUtc, addDays } from "./time.js";
 import { displayFamily, formatPhone } from "./people.js";
 
 const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
@@ -66,7 +66,7 @@ export function googleCalendarUrl(b, cfg) {
 
 // The missionaries' calendar: every visit they are hosted at, with the family's
 // phone number in the details. One VEVENT per booking; also served as a live feed.
-export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now()) {
+export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now(), followups = []) {
   const alarm = (trigger, text) => [
     "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(text)}`, `TRIGGER:${trigger}`, "END:VALARM",
   ];
@@ -100,6 +100,36 @@ export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now()) {
       `DESCRIPTION:${esc(desc)}`,
       "STATUS:CONFIRMED",
       ...alarm("-PT1H", "Visit in 1 hour"),
+      "END:VEVENT",
+    );
+  }
+  // Follow-ups the missionaries set in their notes: a reminder on their calendar to return or follow up.
+  // With a time it is a short timed event; with only a date it is an all-day event.
+  const day = (d) => d.replace(/-/g, "");
+  for (const f of followups) {
+    const ward = wardOf(f);
+    const desc = [
+      `Follow up with ${displayFamily(f.family)}`,
+      `Phone: ${formatPhone(f.phone)}`,
+      f.address ? `Address: ${f.address}` : null,
+      f.address ? `Directions (Google Maps): ${googleMapsUrl(f.address)}` : null,
+      ward ? `Ward: ${ward}` : null,
+      f.commitments ? `Commitments they left: ${f.commitments}` : null,
+    ].filter(Boolean).join("\n");
+    const when = f.followup_time
+      ? [`DTSTART:${compactUtc(f.followup_utc)}`, `DTEND:${compactUtc(f.followup_utc + 30 * 60_000)}`]
+      : [`DTSTART;VALUE=DATE:${day(f.followup_date)}`, `DTEND;VALUE=DATE:${day(addDays(f.followup_date, 1))}`];
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:mfollow-${f.token}@missionary-visits`,
+      `DTSTAMP:${compactUtc(nowMs)}`,
+      ...when,
+      `SUMMARY:${esc(`Follow up — ${displayFamily(f.family)}`)}`,
+      ...(f.address ? [`LOCATION:${esc(f.address)}`, `URL:${googleMapsUrl(f.address)}`] : []),
+      `DESCRIPTION:${esc(desc)}`,
+      "STATUS:CONFIRMED",
+      // Timed: an hour ahead. All-day: 9 AM that day (a positive trigger counts from the start, midnight).
+      ...(f.followup_time ? alarm("-PT1H", "Follow-up in 1 hour") : alarm("PT9H", "Follow-up today")),
       "END:VEVENT",
     );
   }

@@ -65,6 +65,21 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 - Privacy policy mentions the wait-list texts. **Twilio's toll-free verification text should mention wait-list texts too.**
 - 35 tests pass.
 
+## Visit notes, cancel/delete, open/close times (branch `visit-notes`)
+- **Notes per visit** (table `visit_notes`): planned to teach, what was taught, commitments left, and a follow-up date (+ optional time).
+  Written on the missionaries' page (Notes on each visit, plus a "Recent visits" list of the last 60 days for after-the-fact write-ups) or by
+  the admin (Notes on the Visits tab). Private: never in the family's link, the public sheet, texts or the CSV.
+- **Follow-up reminders** appear on the missionaries' calendar feed (and the "everything" .ics download) as "Follow up — family": timed (30 min,
+  reminder 1 hour before) or all-day (reminder 9 AM). The event description carries phone/address and the commitments only, not the lesson notes.
+  Cancelling or deleting the visit drops its follow-up.
+- **Cancel / Delete** on both sides. Cancel keeps the record and reopens the time (wait-list is texted as usual; the missionaries are not texted
+  about their own cancel). Delete = cancel plus erasing the record and its notes. The family is not told automatically either way: they only
+  consented to reminders, so whoever acts should call them.
+- **Open/close times** on the missionaries' page, same rules as the admin's "Make a time unavailable"; the form lists only that weekday's times.
+- Fixed: `isDate("2026-13-45")` threw instead of returning false, so any endpoint given a malformed date could answer 500.
+- Removed "include your city" from the sign-up form's address hint (missionaries know their area).
+- 45 tests pass.
+
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.

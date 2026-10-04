@@ -49,6 +49,12 @@
       <div id="bookings" class="wide-tbl" style="margin-top:12px"></div>
     </section>
 
+    <section class="panel">
+      <h2 class="serif">Recent visits</h2>
+      <p class="fine">Visits from the last 60 days. The missionaries write what they planned to teach, what was taught, the commitments left and when they'll follow up on their own page; you can read or edit it here with <b>Notes</b>.</p>
+      <div id="recentVisits" class="wide-tbl"></div>
+    </section>
+
     <section class="panel" id="waitPane">
       <h2 class="serif">Wait-list</h2>
       <p class="fine">Families waiting for a week that filled up. When a visit in their week cancels, they are texted first and the time is held for them (<span id="holdMin">30</span> minutes, changeable in Settings) before the public can take it.</p>
@@ -216,6 +222,7 @@
     </section>
   </div>
 </main>
+<script src="/notes-form.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -228,6 +235,39 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll("[data-pane]").forEach((p) => p.hidden = p.dataset.pane !== b.dataset.tab);
   if (b.dataset.tab === "stats") loadStats();
 });
+
+const hasNotes = (n) => !!(n && (n.planned || n.taught || n.commitments || n.followupDate));
+
+// Buttons at the end of a visit's row: Notes (opens the form in a row beneath), Cancel (upcoming only), Delete.
+function actionsCell(tr, x, upcoming) {
+  const td = el("td"); td.style.whiteSpace = "nowrap";
+  const gap = (b) => { b.style.marginRight = "6px"; return b; };
+  const notesBtn = el("button", "btn ghost small", hasNotes(x.notes) ? "Notes ●" : "Notes");
+  notesBtn.onclick = () => {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains("nrow")) { next.remove(); return; }
+    const row = el("tr", "nrow"); const c = el("td"); c.colSpan = tr.children.length;
+    c.append(NotesForm.build(x.notes, async (payload) => {
+      const r = await fetch(`/api/admin/visits/${x.id}/notes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? j : { error: j.error };
+    }, (n) => { x.notes = n; notesBtn.textContent = hasNotes(n) ? "Notes ●" : "Notes"; }));
+    row.append(c); tr.after(row);
+  };
+  td.append(gap(notesBtn));
+  if (upcoming) {
+    const cancel = el("button", "btn danger small", "Cancel");
+    cancel.onclick = async () => {
+      if (confirm(`Cancel ${x.family} on ${x.dayLabel}?\n\nThe time opens up again. The family is not told automatically, so call or text them.`)) { await post(`/api/admin/cancel/${x.id}`); load(); }
+    };
+    td.append(gap(cancel));
+  }
+  const del = el("button", "btn danger small", "Delete");
+  del.onclick = async () => {
+    if (confirm(`Permanently delete ${x.family}'s visit on ${x.dayLabel} and its notes? This can't be undone.`)) { await post(`/api/admin/delete/${x.id}`); load(); }
+  };
+  td.append(del); tr.append(td);
+}
 
 async function load() {
   state = await (await fetch("/api/admin/state")).json();
@@ -249,10 +289,20 @@ async function load() {
       const tr = el("tr");
       cell(tr, `${x.dayLabel} ${x.timeLabel}`); cell(tr, x.family); cell(tr, x.phone); { const td = cell(tr, x.address ? "" : "—"); if (x.address) { const a = el("a", "", x.address); a.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(x.address); a.target = "_blank"; a.rel = "noreferrer"; td.append(a); } }
       cell(tr, ([x.remindDay && "1 day", x.remindHour && "1 hour"].filter(Boolean).join(", ") || "—") + (x.smsError ? " ⚠ " + x.smsError : ""));
-      const td = el("td"); const btn = el("button", "btn danger small", "Cancel");
-      btn.onclick = async () => { if (confirm(`Cancel ${x.family} on ${x.dayLabel}?`)) { await post(`/api/admin/cancel/${x.id}`); load(); } };
-      td.append(btn); tr.append(td); tbl.append(tr);
+      actionsCell(tr, x, true); tbl.append(tr);
     }
+  }
+  const rec = $("recentVisits");
+  if (!state.recent.length) rec.textContent = "No visits in the last 60 days.";
+  else {
+    const tbl = el("table"); tbl.innerHTML = "<tr><th>When</th><th>Family</th><th>Phone</th><th>Follow-up</th><th></th></tr>";
+    for (const x of state.recent) {
+      const tr = el("tr");
+      cell(tr, `${x.dayLabel} ${x.timeLabel}`); cell(tr, x.family); cell(tr, x.phone);
+      cell(tr, NotesForm.summary(x.notes).join(" · ") || "—");
+      actionsCell(tr, x, false); tbl.append(tr);
+    }
+    rec.replaceChildren(tbl);
   }
   $("blocks").replaceChildren(...state.blocks.map((k) => {
     const d = el("div"); d.style.margin = "8px 0"; d.append(el("span", "tag", k.label));

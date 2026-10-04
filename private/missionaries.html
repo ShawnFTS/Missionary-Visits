@@ -11,11 +11,20 @@
   .wk { margin: 18px 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .wk h3 { margin: 0; font-family: Georgia, serif; font-size: 1.1rem; }
   .wk button { font: inherit; font-size: .85rem; background: none; border: 0; color: var(--navy-2); text-decoration: underline; cursor: pointer; padding: 4px; }
-  .v { display: flex; gap: 12px; align-items: center; padding: 10px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+  .vw { border-top: 1px solid var(--line); padding: 8px 4px 4px; }
+  .v { display: flex; gap: 12px; align-items: center; padding: 4px 0; cursor: pointer; }
+  .v.plain { cursor: default; }
   .v input { width: 24px; height: 24px; accent-color: var(--navy); flex: none; }
   .v .when { margin: 0; font-weight: 600; color: var(--ink); }
   .v .who { margin: 0; color: var(--muted); }
   .v .who a { color: var(--navy-2); font-weight: 600; }
+  .acts { display: flex; gap: 14px; flex-wrap: wrap; margin: 2px 0 4px 36px; }
+  .vw.plainw .acts { margin-left: 0; }
+  .lnk { font: inherit; font-size: .88rem; background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--navy-2); font-weight: 600; text-decoration: underline; }
+  .lnk.danger { color: var(--danger); }
+  .vw .chips { margin-left: 36px; }
+  .vw.plainw .chips { margin-left: 0; }
+  .vw .nf { margin-left: 0; }
   .bar { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .sub { display: grid; gap: 8px; }
   .sub input { width: 100%; font: inherit; font-size: 14px; padding: 10px; border: 1.5px solid #c9c2b2; border-radius: 10px; background: #fff; color: var(--ink); }
@@ -27,7 +36,7 @@
 <main>
   <section class="panel">
     <h2 class="serif">Stay up to date automatically</h2>
-    <p class="fine">Subscribe once and every new visit shows up on your calendar, with the family's name, phone number and address (tap it for directions). Cancelled visits disappear.</p>
+    <p class="fine">Subscribe once and every new visit shows up on your calendar, with the family's name, phone number and address (tap it for directions). Cancelled visits disappear. Follow-ups you set in your notes appear too.</p>
     <div class="sub">
       <div class="row">
         <a class="btn" id="subGoogle" href="#" target="_blank" rel="noopener">Subscribe (Google Calendar)</a>
@@ -38,16 +47,35 @@
   </section>
 
   <section class="panel">
-    <h2 class="serif">Pick visits to add</h2>
-    <p class="fine">Check the visits you want, then use the button at the bottom. This adds a copy to your calendar; it won't update if plans change (subscribing above does).</p>
+    <h2 class="serif">Upcoming visits</h2>
+    <p class="fine">Tap <b>Notes</b> to write what you plan to teach, and later what you taught, what the family committed to, and when you'll return. Check the visits you want and use the button at the bottom to add a copy to your calendar (it won't update if plans change; subscribing above does).</p>
     <div class="row"><button class="btn ghost" id="all">Select all</button><button class="btn ghost" id="none">Clear</button></div>
     <div id="list"><p>Loading…</p></div>
+  </section>
+
+  <section class="panel">
+    <h2 class="serif">Open or close a time</h2>
+    <p class="fine">Take a time off the sign-up page (a ward activity, a transfer day, anything), then tap <b>Open</b> to put it back. If a family has already signed up for that time, cancel their visit above first.</p>
+    <div class="row" style="align-items:end">
+      <label class="fine" style="margin:0">Date<br><input type="date" id="bDate" style="padding:10px;font:inherit;border:1.5px solid #c9c2b2;border-radius:10px;background:#fff"></label>
+      <label class="fine" style="margin:0">Time<br><select id="bTime" style="padding:10px;font:inherit;border:1.5px solid #c9c2b2;border-radius:10px;background:#fff"></select></label>
+      <button class="btn" id="block">Close this time</button>
+    </div>
+    <p class="err" id="blockErr" style="margin-top:8px"></p>
+    <div id="blocks"></div>
+  </section>
+
+  <section class="panel" id="recentPanel" hidden>
+    <h2 class="serif">Recent visits</h2>
+    <p class="fine">Visits from the last 60 days. Add what was taught, the commitments they left, and when you'll follow up.</p>
+    <div id="recent"></div>
   </section>
 </main>
 <div class="bar">
   <span id="count">0 selected</span>
   <button class="btn" id="add" disabled>Add selected to my calendar</button>
 </div>
+<script src="/notes-form.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const key = location.pathname.split("/")[2];
@@ -56,7 +84,12 @@ $("feedUrl").value = feed;
 $("subGoogle").href = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(feed.replace(/^https?:/, "webcal:"));
 $("copy").onclick = async () => { try { await navigator.clipboard.writeText(feed); $("copy").textContent = "Copied"; } catch { $("feedUrl").select(); } };
 
-const boxes = () => [...document.querySelectorAll(".v input")];
+const api = (p, opt) => fetch(`/api/m/${key}${p}`, opt);
+const put = (p, body) => api(p, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const post = (p) => api(p, { method: "POST" });
+const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+const boxes = () => [...document.querySelectorAll("#list .v input")];
 const update = () => {
   const n = boxes().filter((b) => b.checked).length;
   $("count").textContent = `${n} selected`;
@@ -70,40 +103,134 @@ $("add").onclick = () => {
   location.href = `/api/m/${key}/visits.ics?ids=${ids}`;
 };
 
-(async () => {
-  const r = await fetch(`/api/m/${key}/visits`);
-  if (!r.ok) { $("list").textContent = "Couldn't load visits."; return; }
-  const { visits } = await r.json();
-  if (!visits.length) { $("list").textContent = "No visits booked yet."; return; }
-  const weeks = new Map();
-  for (const v of visits) { if (!weeks.has(v.week)) weeks.set(v.week, []); weeks.get(v.week).push(v); }
-  const frag = document.createDocumentFragment();
-  for (const [wk, list] of weeks) {
-    const head = document.createElement("div"); head.className = "wk";
-    const h = document.createElement("h3"); h.textContent = list[0].ward ? `${list[0].ward} Ward` : "Week of " + wk;
-    const sel = document.createElement("button"); sel.type = "button"; sel.textContent = "Select this week";
-    sel.onclick = () => setAll(true, wk);
-    head.append(h, sel); frag.append(head);
-    for (const v of list) {
-      const label = document.createElement("label"); label.className = "v";
-      const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = v.id; cb.dataset.week = wk; cb.onchange = update;
-      const txt = document.createElement("div");
-      const when = document.createElement("p"); when.className = "when"; when.textContent = `${v.dayLabel} · ${v.timeLabel}`;
-      const who = document.createElement("p"); who.className = "who"; who.append(v.family + " · ");
-      const a = document.createElement("a"); a.href = "tel:" + v.phone.replace(/\D/g, ""); a.textContent = v.phone;
-      a.onclick = (e) => e.stopPropagation();
-      who.append(a); txt.append(when, who);
-      if (v.address) { // tap for directions in the phone's maps app
-        const where = document.createElement("p"); where.className = "who";
-        const m = document.createElement("a"); m.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(v.address);
-        m.target = "_blank"; m.rel = "noreferrer"; m.textContent = "📍 " + v.address; m.onclick = (e) => e.stopPropagation();
-        where.append(m); txt.append(where);
-      }
-      label.append(cb, txt); frag.append(label);
-    }
+// One visit: who/when, badges, and Notes / Cancel / Delete. `upcoming` visits can be ticked and cancelled.
+function visitEl(v, upcoming) {
+  const wrap = mk("div", "vw" + (upcoming ? "" : " plainw"));
+  const head = upcoming ? mk("label", "v") : mk("div", "v plain");
+  if (upcoming) {
+    const cb = mk("input"); cb.type = "checkbox"; cb.value = v.id; cb.dataset.week = v.week; cb.onchange = update;
+    head.append(cb);
   }
-  $("list").replaceChildren(frag); update();
-})();
+  const txt = mk("div");
+  txt.append(mk("p", "when", `${v.dayLabel} · ${v.timeLabel}`));
+  const who = mk("p", "who"); who.append(v.family + " · ");
+  const a = mk("a", "", v.phone); a.href = "tel:" + v.phone.replace(/\D/g, ""); a.onclick = (e) => e.stopPropagation();
+  who.append(a); txt.append(who);
+  if (v.address) { // tap for directions in the phone's maps app
+    const where = mk("p", "who");
+    const m = mk("a", "", "📍 " + v.address);
+    m.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(v.address);
+    m.target = "_blank"; m.rel = "noreferrer"; m.onclick = (e) => e.stopPropagation();
+    where.append(m); txt.append(where);
+  }
+  head.append(txt); wrap.append(head);
+
+  const chips = mk("div", "chips");
+  const paint = (n) => chips.replaceChildren(...NotesForm.summary(n).map((t) => mk("span", "chip", t)));
+  paint(v.notes); wrap.append(chips);
+
+  const acts = mk("div", "acts");
+  const notesBtn = mk("button", "lnk", "Notes"); notesBtn.type = "button";
+  acts.append(notesBtn);
+  if (upcoming) {
+    const c = mk("button", "lnk danger", "Cancel visit"); c.type = "button";
+    c.onclick = async () => {
+      if (!confirm(`Cancel the visit with ${v.family} on ${v.dayLabel}?\n\nThe time opens up for another family. The family is NOT told automatically, so please call or text them.`)) return;
+      const r = await post(`/visits/${v.id}/cancel`);
+      if (!r.ok) return alert("Couldn't cancel that. Please try again.");
+      load();
+    };
+    acts.append(c);
+  }
+  const d = mk("button", "lnk danger", "Delete"); d.type = "button";
+  d.onclick = async () => {
+    if (!confirm(`Permanently delete ${v.family}'s visit on ${v.dayLabel} and its notes?\n\nThis can't be undone.${upcoming ? "\nThe time opens up for another family, and the family is NOT told automatically." : ""}`)) return;
+    const r = await post(`/visits/${v.id}/delete`);
+    if (!r.ok) return alert("Couldn't delete that. Please try again.");
+    load();
+  };
+  acts.append(d); wrap.append(acts);
+
+  let form = null;
+  notesBtn.onclick = () => {
+    if (form) { form.hidden = !form.hidden; return; }
+    form = NotesForm.build(v.notes, async (payload) => {
+      const r = await put(`/visits/${v.id}/notes`, payload);
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? j : { error: j.error };
+    }, (n) => { v.notes = n; paint(n); });
+    wrap.append(form);
+  };
+  return wrap;
+}
+
+// Closed times: list with an Open button for each.
+function paintBlocks(blocks) {
+  const box = $("blocks");
+  if (!blocks.length) { box.replaceChildren(mk("p", "fine", "No times are closed.")); return; }
+  box.replaceChildren(...blocks.map((k) => {
+    const d = mk("div"); d.style.margin = "8px 0";
+    d.append(mk("span", "tag", k.label));
+    const b = mk("button", "btn ghost small", "Open"); b.type = "button";
+    b.onclick = async () => {
+      const r = await api("/unblock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: k.date, time: k.time }) });
+      if (r.ok) paintBlocks((await r.json()).blocks); else alert("Couldn't open that time. Please try again.");
+    };
+    d.append(b); return d;
+  }));
+}
+async function loadTimes() {
+  const r = await api("/times");
+  if (!r.ok) return;
+  const { times, byDay, blocks } = await r.json();
+  const fill = (list) => $("bTime").replaceChildren(...list.map((t) => Object.assign(mk("option"), { value: t.value, textContent: t.label })));
+  fill(times);
+  // Once a date is picked, list only the times offered that weekday.
+  $("bDate").onchange = () => {
+    const v = $("bDate").value;
+    if (!v) return fill(times);
+    const dow = new Date(v + "T12:00:00Z").getUTCDay();
+    const day = byDay[dow] || [];
+    fill(day);
+    $("blockErr").textContent = day.length ? "" : "No visits are offered on that day.";
+  };
+  paintBlocks(blocks);
+}
+$("block").onclick = async () => {
+  $("blockErr").textContent = "";
+  const r = await api("/block", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: $("bDate").value, time: $("bTime").value }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $("blockErr").textContent = j.error || "Couldn't close that time."; return; }
+  paintBlocks(j.blocks);
+};
+
+async function load() {
+  const r = await api("/visits");
+  if (!r.ok) { $("list").textContent = "Couldn't load visits."; return; }
+  const { visits, recent } = await r.json();
+
+  const list = $("list");
+  if (!visits.length) list.textContent = "No visits booked yet.";
+  else {
+    const weeks = new Map();
+    for (const v of visits) { if (!weeks.has(v.week)) weeks.set(v.week, []); weeks.get(v.week).push(v); }
+    const frag = document.createDocumentFragment();
+    for (const [wk, vs] of weeks) {
+      const head = mk("div", "wk");
+      head.append(mk("h3", "", vs[0].ward ? `${vs[0].ward} Ward` : "Week of " + wk));
+      const sel = mk("button", "", "Select this week"); sel.type = "button"; sel.onclick = () => setAll(true, wk);
+      head.append(sel); frag.append(head);
+      for (const v of vs) frag.append(visitEl(v, true));
+    }
+    list.replaceChildren(frag);
+  }
+  update();
+
+  $("recentPanel").hidden = !recent.length;
+  $("recent").replaceChildren(...recent.map((v) => visitEl(v, false)));
+}
+load();
+loadTimes();
 </script>
 </body>
 </html>
