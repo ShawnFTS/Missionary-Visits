@@ -100,3 +100,4 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line
 .ward-line:not([hidden]) { background: var(--gold-bg); border-radius: 10px; padding: 8px 12px; }
 .back-line { text-align: center; margin: -4px 0 12px; }
 .back-line:has(button[hidden]) { display: none; }
+[hidden] { display: none !important; }
