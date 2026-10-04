@@ -20,7 +20,6 @@ function fold(line) {
 // One-tap directions. LOCATION alone is auto-linked by most phones; these links
 // in the notes and URL field also work in calendar apps that don't do that.
 export const googleMapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-export const appleMapsUrl = (address) => `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
 
 export function bookingEnd(b, minutes) {
   return b.start_utc + minutes * 60_000;
@@ -88,7 +87,6 @@ export function buildMissionaryIcs(bookings, cfg, wardOf, nowMs = Date.now()) {
       `Phone: ${formatPhone(b.phone)}`,
       b.address ? `Address: ${b.address}` : null,
       b.address ? `Directions (Google Maps): ${googleMapsUrl(b.address)}` : null,
-      b.address ? `Directions (Apple Maps): ${appleMapsUrl(b.address)}` : null,
       ward ? `Ward: ${ward}` : null,
     ].filter(Boolean).join("\n");
     lines.push(

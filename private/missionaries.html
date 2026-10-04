@@ -30,8 +30,7 @@
     <p class="fine">Subscribe once and every new visit shows up on your calendar, with the family's name, phone number and address (tap it for directions). Cancelled visits disappear.</p>
     <div class="sub">
       <div class="row">
-        <a class="btn" id="subApple" href="#">Subscribe (iPhone / Mac)</a>
-        <a class="btn ghost" id="subGoogle" href="#" target="_blank" rel="noopener">Subscribe (Google Calendar)</a>
+        <a class="btn" id="subGoogle" href="#" target="_blank" rel="noopener">Subscribe (Google Calendar)</a>
       </div>
       <p class="fine" style="margin:0">Or paste this address into any calendar app's “subscribe to calendar from URL”:</p>
       <div class="row"><input id="feedUrl" readonly><button class="btn ghost" id="copy">Copy</button></div>
@@ -54,7 +53,6 @@ const $ = (id) => document.getElementById(id);
 const key = location.pathname.split("/")[2];
 const feed = `${location.origin}/m/${key}/feed.ics`;
 $("feedUrl").value = feed;
-$("subApple").href = feed.replace(/^https?:/, "webcal:");
 $("subGoogle").href = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(feed.replace(/^https?:/, "webcal:"));
 $("copy").onclick = async () => { try { await navigator.clipboard.writeText(feed); $("copy").textContent = "Copied"; } catch { $("feedUrl").select(); } };
 

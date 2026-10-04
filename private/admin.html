@@ -98,16 +98,14 @@
         <label class="fine">Live calendar feed (what their calendar app subscribes to)<br><input class="url" id="feed" readonly></label>
         <p class="inline" style="margin-top:10px">
           <button class="btn small" id="copyFeed">Copy feed link</button>
-          <a class="btn ghost small" id="webcal" href="#">Subscribe on iPhone / Mac</a>
         </p>
 
         <h3 class="serif">How the missionaries subscribe</h3>
         <ol class="steps">
-          <li><strong>iPhone:</strong> open their page and tap Subscribe, or Settings → Calendar → Accounts → Add Account → Other → <em>Add Subscribed Calendar</em> and paste the feed link.</li>
-          <li><strong>Android / Google Calendar:</strong> on a computer, calendar.google.com → Other calendars (+) → <em>From URL</em> → paste the feed link → Add.</li>
-          <li><strong>Outlook:</strong> Add calendar → Subscribe from web → paste.</li>
+          <li><strong>On the phone:</strong> open their page and tap <em>Subscribe (Google Calendar)</em>.</li>
+          <li><strong>From a computer:</strong> calendar.google.com → Other calendars (+) → <em>From URL</em> → paste the feed link → Add.</li>
         </ol>
-        <p class="fine">Calendars refresh on their own schedule: iPhone about hourly, Google can take several hours up to a day. For a visit today or tomorrow, a text still beats waiting on the calendar.</p>
+        <p class="fine">Google Calendar refreshes subscribed calendars on its own schedule, which can take several hours up to a day. For a visit today or tomorrow, a text still beats waiting on the calendar.</p>
 
         <h3 class="serif">Message you can send them</h3>
         <div class="msg" id="msg"></div>
@@ -265,7 +263,7 @@ async function load() {
   $("noKey").hidden = !!state.pageUrl; $("hasKey").hidden = !state.pageUrl;
   if (state.pageUrl) {
     $("page").value = state.pageUrl; $("openPage").href = state.pageUrl;
-    $("feed").value = state.feedUrl; $("webcal").href = state.webcalUrl;
+    $("feed").value = state.feedUrl;
     $("msg").textContent = `Hi Elders/Sisters! Here is your private page for the member visits in the Eagle Mountain West Stake. It lists every family that has signed up with their phone number and address (tap the address for directions), and you can subscribe so new visits appear on your calendar automatically:\n\n${state.pageUrl}\n\nPlease keep this link private — it has families' phone numbers and addresses.`;
   }
 }

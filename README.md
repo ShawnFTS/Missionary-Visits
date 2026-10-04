@@ -7,7 +7,7 @@ A plain sign-up sheet for hosting the missionaries. No ads, no accounts, no them
 - Optional text reminders **1 day before** and **1 hour before** (Twilio).
 - "Add to my calendar" (.ics for iPhone/Outlook/Apple) and "Add to Google Calendar".
 - Each family gets a private link (`/b/<token>`) to re-download the calendar file or cancel.
-- Optional address on the form (never shown publicly). It becomes the location of the missionaries' calendar events, with Google/Apple Maps links for one-tap directions.
+- Optional address on the form (never shown publicly). It becomes the location of the missionaries' calendar events, with a Google Maps link for one-tap directions.
 - `/admin` (password): visits grouped by week and ward, add a visit by hand, cancel, block times, CSV export,
   the **missionary calendar link** (subscribe once; new sign-ups and cancellations flow to their phones), and
   **visitor stats** (anonymous: one cookie per browser, device/browser type, where visitors came from; no IPs or names).

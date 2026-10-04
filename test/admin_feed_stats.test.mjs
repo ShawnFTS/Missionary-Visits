@@ -45,7 +45,7 @@ test("address is stored but never public; the missionaries' feed carries phone +
   assert.match(flat, /LOCATION:123 Main St\\, Eagle Mountain/);
   assert.match(flat, /Phone: \(801\) 555-0123/);
   assert.match(flat, /URL:https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=123%20Main%20St%2C%20Eagle%20Mountain/);
-  assert.match(flat, /Directions \(Apple Maps\): https:\/\/maps\.apple\.com\/\?q=123%20Main%20St/);
+  assert.doesNotMatch(flat, /Apple Maps/, "the missionaries are on Android, so no Apple Maps link");
   assert.match(flat, /Ward: Springwater/);
   for (const line of body.split("\r\n")) assert.ok(Buffer.byteLength(line) <= 75);
 });

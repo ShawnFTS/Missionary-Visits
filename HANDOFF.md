@@ -27,7 +27,7 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 
 ## Added in the admin/missionary-calendar session
 - Optional **address** on the form (never public). It is the **location** of the missionaries' calendar events, with
-  Google/Apple Maps links in the details, and shows (tap for directions) on their `/m/<key>` page and in `/admin`.
+  a Google Maps link in the details (the missionaries are all on Android, so there are no iPhone/Apple buttons or links for them), and shows (tap for directions) on their `/m/<key>` page and in `/admin`.
 - **Admin upgrades** (`/admin`, three tabs): visits grouped by week/ward, add a visit by hand (no text consent),
   cancel, block times, CSV export; "Missionary calendar" tab shows the `/m/<MISSIONARY_KEY>` page + feed links, subscribe
   steps and a message to paste (it says to set `MISSIONARY_KEY` if unset); "Visitors" tab (below).
