@@ -285,6 +285,22 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     res.json({ visits: up.map((b) => visitRow(b, n.get(b.id))), recent: past.map((b) => visitRow(b, n.get(b.id))) });
   });
 
+  // The weekly schedule (which times each day offers) and the visit length, editable by the missionaries.
+  // Deliberately only those two settings: the ward rotation, phone numbers and text settings stay admin-only.
+  // Same validation as the admin screen, and a change never moves or cancels a booked family.
+  const scheduleView = () => { const v = settings.editableView(cfg); return { days: v.days, schedule: v.schedule, minutes: v.minutes }; };
+  app.get("/api/m/:key/schedule", requireKey, (req, res) => res.json(scheduleView()));
+  app.post("/api/m/:key/schedule", requireKey, (req, res) => {
+    const b = req.body || {};
+    const input = {};
+    if (b.schedule !== undefined) input.schedule = b.schedule;
+    if (b.minutes !== undefined) input.minutes = b.minutes;
+    if (!Object.keys(input).length) return res.status(400).json({ errors: ["Nothing to save."] });
+    const r = settings.save(db, cfg, input, now());
+    if (r.errors) return res.status(400).json({ errors: r.errors });
+    res.json({ ok: true, warnings: r.warnings, ...scheduleView() });
+  });
+
   // Open or close times from the missionaries' own page: same rules as the admin screen.
   app.get("/api/m/:key/times", requireKey, (req, res) => {
     const opt = (v) => ({ value: v, label: fmtTime(v) });

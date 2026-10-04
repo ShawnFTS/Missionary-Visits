@@ -65,6 +65,15 @@
     <div id="blocks"></div>
   </section>
 
+  <section class="panel">
+    <h2 class="serif">Weekly schedule</h2>
+    <p class="fine">The times families can pick each day. Write times like <em>7:30 PM, 8:15 PM</em> (include AM or PM), and leave a day blank for no visits. <b>Changing this never moves or cancels a family who already signed up.</b></p>
+    <div id="schedRows"></div>
+    <label class="fine" style="display:block;margin-top:10px">Length of a visit (minutes)<br><input id="sMinutes" type="number" min="15" max="240" style="width:100px;padding:10px;font:inherit;border:1.5px solid #c9c2b2;border-radius:10px;background:#fff"></label>
+    <p style="margin:12px 0 0"><button class="btn" id="saveSched">Save schedule</button></p>
+    <p class="fine" id="schedMsg" style="white-space:pre-wrap;font-weight:600"></p>
+  </section>
+
   <section class="panel" id="recentPanel" hidden>
     <h2 class="serif">Recent visits</h2>
     <p class="fine">Visits from the last 60 days. Add what was taught, the commitments they left, and when you'll follow up.</p>
@@ -204,6 +213,35 @@ $("block").onclick = async () => {
   paintBlocks(j.blocks);
 };
 
+// Weekly schedule: one text box of times per weekday.
+function paintSchedule(s) {
+  const rows = $("schedRows"); rows.replaceChildren();
+  s.days.forEach((name, d) => {
+    const row = mk("div"); row.style.cssText = "display:flex;gap:10px;align-items:center;margin:6px 0";
+    const lab = mk("label", "fine", name); lab.style.cssText = "width:90px;margin:0;font-weight:600";
+    const inp = mk("input"); inp.dataset.day = d; inp.value = s.schedule[d]; inp.placeholder = "no visits";
+    inp.style.cssText = "flex:1;min-width:0;padding:10px;font:inherit;border:1.5px solid #c9c2b2;border-radius:10px;background:#fff";
+    lab.htmlFor = "sd" + d; inp.id = "sd" + d;
+    row.append(lab, inp); rows.append(row);
+  });
+  $("sMinutes").value = s.minutes;
+}
+async function loadSchedule() {
+  const r = await api("/schedule");
+  if (r.ok) paintSchedule(await r.json());
+}
+$("saveSched").onclick = async () => {
+  const msg = $("schedMsg"); msg.style.color = ""; msg.textContent = "Saving…";
+  const schedule = {}; document.querySelectorAll("#schedRows input").forEach((i) => { schedule[i.dataset.day] = i.value; });
+  const r = await api("/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schedule, minutes: $("sMinutes").value }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { msg.style.color = "var(--danger)"; msg.textContent = (j.errors || ["Couldn't save. Please try again."]).join("\n"); return; }
+  paintSchedule(j);
+  msg.style.color = "#2e7d32";
+  msg.textContent = "Saved. The sign-up page is updated." + (j.warnings && j.warnings.length ? "\n⚠ " + j.warnings.join("\n⚠ ") : "");
+  loadTimes(); // the open/close form lists each day's times
+};
+
 async function load() {
   const r = await api("/visits");
   if (!r.ok) { $("list").textContent = "Couldn't load visits."; return; }
@@ -231,6 +269,7 @@ async function load() {
 }
 load();
 loadTimes();
+loadSchedule();
 </script>
 </body>
 </html>

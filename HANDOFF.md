@@ -76,9 +76,12 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
   about their own cancel). Delete = cancel plus erasing the record and its notes. The family is not told automatically either way: they only
   consented to reminders, so whoever acts should call them.
 - **Open/close times** on the missionaries' page, same rules as the admin's "Make a time unavailable"; the form lists only that weekday's times.
+- **Weekly schedule editable by the missionaries** (a panel on their page): the times each weekday offers plus the visit length, with the admin's
+  validation and warnings. Only those two settings; the ward rotation, phone numbers, text settings and wait-list hold stay admin-only
+  (the endpoint ignores any other field). A change never moves or cancels a booked family.
 - Fixed: `isDate("2026-13-45")` threw instead of returning false, so any endpoint given a malformed date could answer 500.
 - Removed "include your city" from the sign-up form's address hint (missionaries know their area).
-- 45 tests pass.
+- 46 tests pass.
 
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),

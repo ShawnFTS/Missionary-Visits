@@ -265,3 +265,57 @@ test("the times form lists only the times offered on each weekday", async () => 
   const mon = weekday.days.find((d) => d.date === "2026-10-05");
   assert.deepEqual(mon.slots.map((s) => s.time), monday);                       // matches what the sign-up sheet offers
 });
+
+test("missionaries can edit the weekly schedule and visit length; nothing else in Settings", async () => {
+  const t = start();
+  const view = await (await t.m("GET", "/schedule")).json();
+  assert.equal(view.days.length, 7);
+  assert.equal(typeof view.minutes, "number");
+  assert.equal((await t.pub("GET", "/api/m/wrong/schedule")).status, 404);
+  assert.equal((await t.pub("POST", "/api/m/wrong/schedule", { schedule: { 1: "6 PM" } })).status, 404);
+
+  // a family books Monday's first time, then the schedule drops that time
+  const before = await (await t.pub("GET", "/api/week?start=2026-10-11")).json();
+  const mon = before.days.find((d) => d.date === "2026-10-12");
+  const monTime = mon.slots.find((s) => s.status === "open");
+  const book = await t.pub("POST", "/api/book", { date: mon.date, time: monTime.time, family: "Keeper", phone: "801-555-0120" });
+  assert.equal(book.status, 201);
+
+  const sched = { ...view.schedule, 1: "6:00 PM, 6:45 PM" };
+  const r = await t.m("POST", "/schedule", { schedule: sched, minutes: 30 });
+  assert.equal(r.status, 200);
+  const saved = await r.json();
+  assert.equal(saved.schedule[1], "6:00 PM, 6:45 PM");
+  assert.equal(saved.minutes, 30);
+  assert.ok(saved.warnings.some((w) => /no longer on the schedule/.test(w)), "tells them a booked visit is now off-schedule");
+
+  // the public sheet follows, and the family who already booked is untouched
+  const after = await (await t.pub("GET", "/api/week?start=2026-10-11")).json();
+  const monAfter = after.days.find((d) => d.date === mon.date);
+  assert.ok(["18:00", "18:45"].every((x) => monAfter.slots.some((s) => s.time === x)));
+  assert.equal(t.db.prepare(`SELECT COUNT(*) c FROM bookings WHERE family = 'Keeper' AND cancelled_at IS NULL`).get().c, 1);
+  assert.equal((await t.a("GET", "/settings").then((x) => x.json())).minutes, 30);        // admin sees the same value
+  assert.equal((await t.m("GET", "/times").then((x) => x.json())).byDay[1].map((o) => o.label).join(), "6:00 PM,6:45 PM");
+
+  // validation reuses the admin's rules
+  const bad = await t.m("POST", "/schedule", { schedule: { ...view.schedule, 2: "7:30" } });
+  assert.equal(bad.status, 400);
+  assert.match((await bad.json()).errors[0], /include AM or PM/);
+  assert.equal((await t.m("POST", "/schedule", { schedule: { 0: "", 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" } })).status, 400);
+  assert.equal((await t.m("POST", "/schedule", { minutes: 5 })).status, 400);
+  assert.equal((await t.m("POST", "/schedule", {})).status, 400);
+
+  // only the schedule and visit length are accepted; other settings are ignored
+  const wards = [...t.cfg.wards], phone = t.cfg.missionaryPhone;
+  const sneaky = await t.m("POST", "/schedule", { schedule: sched, minutes: 30, wards: "Hacked Ward", missionaryPhone: "801-555-9999", notifyCancel: false, waitlistHoldMinutes: 0 });
+  assert.equal(sneaky.status, 200);
+  assert.deepEqual(t.cfg.wards, wards);
+  assert.equal(t.cfg.missionaryPhone, phone);
+  assert.equal(t.cfg.notifyCancel, true);
+  assert.equal(t.cfg.waitlistHoldMinutes, 30);
+
+  // saved for good: a fresh app on the same database comes up with the new schedule
+  const cfg2 = loadConfig({ ADMIN_PASSWORD: "pw", MISSIONARY_KEY: KEY });
+  createApp({ db: t.db, cfg: cfg2, now: () => NOW, sendSms: null });
+  assert.equal(cfg2.minutes, 30);
+});
