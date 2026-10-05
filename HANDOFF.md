@@ -83,6 +83,18 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 - Removed "include your city" from the sign-up form's address hint (missionaries know their area).
 - 46 tests pass.
 
+## Google Sheet sync (branch `sheet-sync`, not yet deployed)
+- The missionaries are not allowed to visit custom domains, so their page and calendar feed are unusable for them. They are allowed Google Sheets. A
+  Google Sheet is now their whole interface: upcoming and recent visits (family, phone, address, directions link), notes, cancel/delete, the weekly
+  schedule and visit length, and closed times. No calendar or iCal is involved.
+- A script inside the Sheet (Apps Script, run on a timer by the Sheet's owner) calls `POST /api/sheet/<SHEET_SECRET>/sync`. Request: the rows as they
+  are in the Sheet. Response: results per row plus the full current state, which the script writes back. `GET /api/sheet/<secret>/state` returns just the
+  state. The code is `src/sheetsync.js`; it calls the same functions the web page and admin use, so every rule is identical.
+- Conflicts: each visit row carries a `version` (when its notes last changed); the schedule has a version hash; the closed-times list has a
+  `closedVersion` hash. A stale version never overwrites; removals of closed times are skipped if the list changed elsewhere (additions still apply).
+- `SHEET_SECRET` is a new Railway variable (unset = the endpoints return 404). Treat it like `MISSIONARY_KEY`: it is the only credential.
+- The Sheet script and its tests live in `C:\Users\stein\Documents\Claude\missionary-sheet`.
+
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.

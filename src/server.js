@@ -11,6 +11,7 @@ import * as analytics from "./analytics.js";
 import * as settings from "./settings.js";
 import * as waitlist from "./waitlist.js";
 import * as notes from "./notes.js";
+import { buildState, applySync } from "./sheetsync.js";
 import { notifyMissionaries } from "./notify.js";
 import { makeTwilioSender } from "./sms.js";
 import { allTimes, slotTimesOn } from "./config.js";
@@ -35,6 +36,19 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   };
   const app = express();
   app.disable("x-powered-by");
+
+  // ---- Google Sheet sync ---------------------------------------------------
+  // The missionaries can't visit this site, so a script in their Google Sheet (run by its owner) posts here.
+  // Registered before the small global body limit because a full sheet is bigger than 10 KB.
+  const sheetAuth = (req, res, next) => {
+    if (!cfg.sheetSecret || !same(String(req.params.secret), cfg.sheetSecret)) return res.status(404).send("Not found");
+    res.set({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
+    next();
+  };
+  const sheetDeps = () => ({ db, cfg, now, wardOf, upcoming, recent, byId, cancelBooking, deleteBooking, blockTime, unblockTime, blockList });
+  app.get("/api/sheet/:secret/state", sheetAuth, (req, res) => res.json({ ok: true, serverTime: now(), results: [], state: buildState(sheetDeps()) }));
+  app.post("/api/sheet/:secret/sync", sheetAuth, express.json({ limit: "1mb" }), (req, res) => res.json(applySync(sheetDeps(), req.body)));
+
   app.use(express.json({ limit: "10kb" }));
   app.use((req, res, next) => {
     res.set("X-Content-Type-Options", "nosniff");

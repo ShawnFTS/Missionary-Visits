@@ -57,6 +57,8 @@ export function loadConfig(env = process.env) {
     adminPassword: env.ADMIN_PASSWORD || "",
     // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
     missionaryKey: env.MISSIONARY_KEY || "",
+    // Secret in the Google Sheet sync address (/api/sheet/<secret>/sync). Unset = the Sheet sync is off.
+    sheetSecret: env.SHEET_SECRET || "",
     dataDir: env.DATA_DIR || "./data",
     selfUrl: (env.SELF_URL || "").replace(/\/$/, ""),
     twilio: {
