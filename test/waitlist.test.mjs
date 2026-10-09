@@ -166,7 +166,7 @@ test("leaving, being removed, and a waiter who books through the normal sheet st
   assert.equal((await (await t.a("/api/admin/waitlist")).json()).entries.length, 0);
 
   // the missionaries' phone still got its cancellation text alongside the wait-list texts
-  assert.ok(t.sent.some((m) => m.to === "+13852337693" && /^Visit cancelled/.test(m.body)));
+  assert.ok(t.sent.some((m) => m.to === "+13852337693" && /^Missionary Visits: visit cancelled/.test(m.body)));
 });
 
 test("hold setting is validated and saved", async () => {

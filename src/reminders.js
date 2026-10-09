@@ -8,7 +8,7 @@ export function reminderText(b, cfg) {
   // Explicit day and time rather than "tomorrow": if the server was down and
   // this goes out late, a relative word would be wrong; a date never is.
   const link = cfg.selfUrl ? ` Manage or cancel: ${cfg.selfUrl}/b/${b.token}` : "";
-  return `Missionary visit reminder (Eagle Mountain West Stake): ${displayFamily(b.family)}, ` +
+  return `Missionary Visits reminder: ${displayFamily(b.family)}, ` +
     `${fmtDay(b.slot_date, { weekday: "long", month: "short", day: "numeric" })} at ${fmtTime(b.slot_time)}.${link} Reply STOP to opt out.`;
 }
 

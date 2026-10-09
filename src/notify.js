@@ -14,9 +14,9 @@ export function describe(kind, b, cfg, by) {
   const who = `${fam}, ${day} ${fmtTime(b.slot_time)}`;
   if (kind === "cancel") {
     const link = cfg.selfUrl ? ` ${cfg.selfUrl}/?start=${sundayOf(b.slot_date)}` : "";
-    return { sms: `Visit cancelled: ${who} (${formatPhone(b.phone)}). The time is open again for another family.${link}` };
+    return { sms: `Missionary Visits: visit cancelled, ${who} (${formatPhone(b.phone)}). The time is open again for another family.${link}` };
   }
-  return { sms: `New visit: ${who}${b.address ? `, ${b.address}` : ""} (${formatPhone(b.phone)}).` };
+  return { sms: `Missionary Visits: new visit, ${who}${b.address ? `, ${b.address}` : ""} (${formatPhone(b.phone)}).` };
 }
 
 // The missionaries' shared phone (the number shown at the bottom of the page, set in Settings)

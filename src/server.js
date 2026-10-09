@@ -486,7 +486,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const to = normalizePhone(cfg.missionaryPhone);
     if (!to) return res.json({ results: ["The missionaries' phone number in Settings isn't a valid 10-digit mobile number."] });
     if (!sendSms) return res.json({ results: ["text: not set up yet"] });
-    try { await sendSms(to, "Test from Missionary Visits: you'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
+    try { await sendSms(to, "Missionary Visits: this is a test. You'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
     catch (e) { res.json({ results: [`text: failed — ${e.message}`] }); }
   });
   // A harmless test text so setup can be checked without cancelling a real visit.
@@ -494,7 +494,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const c = db.prepare(`SELECT * FROM missionary_contacts WHERE id = ? AND active = 1`).get(Number(req.params.id));
     if (!c || !c.phone) return res.status(404).json({ error: "Not found." });
     if (!sendSms) return res.json({ results: ["text: not set up yet"] });
-    try { await sendSms(c.phone, "Test from Missionary Visits: you'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
+    try { await sendSms(c.phone, "Missionary Visits: this is a test. You'll get a text like this when a visit is cancelled."); res.json({ results: ["text: sent"] }); }
     catch (e) { res.json({ results: [`text: failed — ${e.message}`] }); }
   });
 

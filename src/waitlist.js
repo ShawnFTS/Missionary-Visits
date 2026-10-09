@@ -50,7 +50,7 @@ export function offerText(b, e, cfg, minutes) {
   const ward = wardForWeek(cfg, sundayOf(b.slot_date));
   const first = minutes > 0 ? ` You have first pick for the next ${minutes} minutes.` : "";
   const link = cfg.selfUrl ? ` ${cfg.selfUrl}/w/${e.token}` : "";
-  return `A missionary visit time opened up${ward ? ` in ${ward} Ward's week` : ""}: ${day} ${fmtTime(b.slot_time)}.${first}${link} Reply STOP to opt out.`;
+  return `Missionary Visits: a visit time opened up${ward ? ` in ${ward} Ward's week` : ""}: ${day} ${fmtTime(b.slot_time)}.${first}${link} Reply STOP to opt out.`;
 }
 
 // Called when a future visit is cancelled. Never throws into the request.

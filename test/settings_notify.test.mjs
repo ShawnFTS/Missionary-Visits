@@ -140,7 +140,7 @@ test("a cancellation texts the missionaries once, and the time opens up again", 
   await tick();
   assert.equal(t.sent.sms.length, 1);
   assert.equal(t.sent.sms[0].to, "+13852337693");
-  assert.match(t.sent.sms[0].body, /Visit cancelled: Smith Family, Thu, Oct 8 7:30 PM \(\(801\) 555-0123\)/);
+  assert.match(t.sent.sms[0].body, /Missionary Visits: visit cancelled, Smith Family, Thu, Oct 8 7:30 PM \(\(801\) 555-0123\)/);
   assert.match(t.sent.sms[0].body, /open again/);
   assert.match(t.sent.sms[0].body, /https:\/\/x\.test\/\?start=2026-10-04/);
 
@@ -156,13 +156,13 @@ test("admin cancel texts; sign-up text is opt-in; past visits are not texted", a
   const { token } = await (await book(t)).json();
   await tick();
   assert.equal(t.sent.sms.length, 1);
-  assert.match(t.sent.sms[0].body, /^New visit: Smith Family, Thu, Oct 8 7:30 PM, 1 Main St/);
+  assert.match(t.sent.sms[0].body, /^Missionary Visits: new visit, Smith Family, Thu, Oct 8 7:30 PM, 1 Main St/);
 
   const id = t.db.prepare("SELECT id FROM bookings WHERE token = ?").get(token).id;
   await t.a(`/api/admin/cancel/${id}`, {});
   await tick();
   assert.equal(t.sent.sms.length, 2);
-  assert.match(t.sent.sms[1].body, /^Visit cancelled/);
+  assert.match(t.sent.sms[1].body, /^Missionary Visits: visit cancelled/);
 
   const { token: t2 } = await (await book(t, { date: "2026-10-07", time: "19:30" })).json();
   t.clock.t = zonedToUtc("2026-10-08", "09:00", "America/Denver");
@@ -219,7 +219,7 @@ test("the missionaries' phone from Settings is texted without anyone being added
   const { token: t2 } = await (await book(t, { time: "20:15" })).json();
   await tick();
   assert.equal(t.sent.sms.at(-1).to, "+18015550199");
-  assert.match(t.sent.sms.at(-1).body, /^New visit/);
+  assert.match(t.sent.sms.at(-1).body, /^Missionary Visits: new visit/);
   await t.a("/api/admin/settings", { notifyCancel: false });
   const before = t.sent.sms.length;
   await t.j(`/api/booking/${t2}/cancel`, {});
