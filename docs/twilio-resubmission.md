@@ -1,5 +1,9 @@
 # Twilio toll-free verification: resubmission pack
 
+**Second rejection 2026-10-12:** 30488 DBA name must be accurately provided; 30508 opt-in checkbox is pre-selected.
+Fix: DBA field = "Missionary Visits" (matches the texts and consent wording), and the opt-in screenshots were retaken with every
+box unchecked; the consent notice now sits permanently under the unchecked "Text me reminders" box. Resubmit by 2026-10-19.
+
 Rejected 2026-10-07 (request HH9c006ea19d8d37821effe22eaf28f7a7, +1 855 713 4387, FIDUS Technology Solutions LLC).
 Reasons: 30493 Terms URL, 30536 Privacy URL, 30497 Use-case summary incomplete, 30506 Opt-ins must reflect the end business.
 Twilio allows 7 days for a prioritized resubmission (by 2026-10-14).
@@ -10,6 +14,7 @@ Twilio allows 7 days for a prioritized resubmission (by 2026-10-14).
 | Field | Value |
 |---|---|
 | Business name | FIDUS Technology Solutions LLC (exactly as registered) |
+| Doing business as (DBA) | Missionary Visits (the name in every text and on the consent wording) |
 | Terms of Service URL | https://www.missionaryvisits.com/terms |
 | Privacy Policy URL | https://www.missionaryvisits.com/privacy |
 | Opt-in method | Website / web form |
@@ -31,7 +36,7 @@ Mobile numbers and consent are never shared with third parties or affiliates for
 ## Opt-in workflow description (30506)
 On https://www.missionaryvisits.com a visitor selects a visit time and enters their family name and mobile number. To
 receive reminders they tick the unchecked "Text me reminders" box, choose 1 day and/or 1 hour before, and read the notice
-beside the box: "By checking a box you agree to receive automated text messages from Missionary Visits (operated by FIDUS
+beside the box: "By checking “Text me reminders” you agree to receive automated text messages from Missionary Visits (operated by FIDUS
 Technology Solutions LLC) about this visit only: up to 2 messages per visit. Consent is not a condition of signing up.
 Message and data rates may apply. Reply STOP to opt out or HELP for help." with links to the Terms and Privacy Policy.
 For wait-lists, a visitor must tick a required, unchecked box with equivalent wording before they can join. Numbers are
