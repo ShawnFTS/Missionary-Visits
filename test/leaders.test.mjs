@@ -316,10 +316,11 @@ test("the QR card: a stable link with a key, a real QR image, admin-only", async
   assert.equal(qr.status, 200);
   assert.match(qr.headers.get("content-type"), /image\/svg\+xml/);
   assert.match(await qr.text(), /^<svg /);
-  // the same key every time (so a printed card keeps working); a different admin password gives a different key
+  // the same key every time (so a printed card keeps working), also after a restart...
   assert.equal((await (await t.l("/api/leaders/state")).json()).signin.url, s.signin.url);
-  const other = start({ env: { ADMIN_PASSWORD: "different" } });
-  assert.notEqual(await keyOf(other), await keyOf(t));
+  assert.equal(await keyOf(start({ db: t.db })), await keyOf(t));
+  // ...but it is random: a different database gets a different key
+  assert.notEqual(await keyOf(start()), await keyOf(t));
   assert.equal(start({ env: { LEADERS_SIGNIN_KEY: "fixedkey123" } }).cfg.leadersKey, "fixedkey123");
 });
 
@@ -492,4 +493,47 @@ test("what an admin sees: where the sign-in link is", async () => {
   const s = await (await t.a("/api/admin/leaders")).json();
   assert.match(s.signInUrl, /^https:\/\/x\.test\/leaders\/in\/[\w-]{22}$/);
   assert.equal(s.passwordSet, undefined);
+});
+
+test("the QR key is random and has nothing to do with the admin password", async () => {
+  const crypto = await import("node:crypto");
+  const t = start({ env: { ADMIN_PASSWORD: "password" } }); // a deliberately weak admin password
+  const key = await keyOf(t);
+  assert.match(key, /^[\w-]{22}$/);
+  // the old design derived the key from the password; that derivation must no longer produce it
+  const derived = crypto.createHmac("sha256", "password").update("leaders-signin").digest("base64url").slice(0, 22);
+  assert.notEqual(key, derived);
+  // and changing the admin password changes nothing about the key (same database, new password)
+  const db = t.db;
+  const t2 = start({ db, env: { ADMIN_PASSWORD: "a-completely-different-one" } });
+  assert.equal(await keyOf(t2), key);
+  // the key is not echoed anywhere a non-admin can read it
+  assert.equal((await t.j("/api/leaders/state")).status, 401);
+  assert.equal((await t.j("/api/leaders/qr.svg")).status, 401);
+  assert.equal((await t.j("/api/leaders/signin/rotate", {})).status, 401);
+});
+
+test("'make a new code' retires every printed card at once", async () => {
+  const t = start();
+  const oldKey = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  assert.equal((await signin(t, oldKey, { name: "Before Rotate", consent: false })).status, 201);
+
+  const r = await t.l("/api/leaders/signin/rotate", {});
+  assert.equal(r.status, 200);
+  const newKey = (await r.json()).url.split("/").pop();
+  assert.notEqual(newKey, oldKey);
+  assert.equal(await keyOf(t), newKey);
+
+  assert.equal((await t.j(`/api/signin/${oldKey}`)).status, 404);                   // the old card is dead
+  assert.equal((await t.j(`/leaders/in/${oldKey}`)).status, 404);
+  assert.equal((await signin(t, oldKey, { name: "After Rotate" })).status, 404);
+  assert.equal((await signin(t, newKey, { name: "After Rotate", phone: "801-555-0222", consent: false })).status, 201); // the new one works
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people").get().n, 2);    // nothing already signed in was lost
+
+  // a key pinned in the environment cannot be rotated from the page
+  const pinned = start({ env: { LEADERS_SIGNIN_KEY: "pinnedkey1234567890ab" } });
+  const p = await pinned.l("/api/leaders/signin/rotate", {});
+  assert.equal(p.status, 409);
+  assert.match((await p.json()).error, /LEADERS_SIGNIN_KEY/);
 });

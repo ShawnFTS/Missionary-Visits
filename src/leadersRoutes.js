@@ -2,7 +2,7 @@
 //
 // The backend (the roster, attendance lists, board and settings) is behind the ADMIN login, like /admin. With no
 // admin password set it answers 404. The only public piece is the QR sign-in a person uses to put themselves on the
-// list, and that is gated by the key on the printed card and by the meeting actually being on (see leaders.js).
+// list, and that is gated by the random key on the printed card and by the meeting actually being on (see leaders.js).
 // JSON bodies only, so a form on another site cannot post through an admin's cached sign-in.
 import path from "node:path";
 import QRCode from "qrcode";
@@ -26,7 +26,7 @@ export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAd
     res.sendFile(path.join(root, "private", "leaders.html"));
   });
 
-  const signInUrl = (req) => `${cfg.selfUrl || `${req.protocol}://${req.get("host")}`}/leaders/in/${L.signInKey(cfg)}`;
+  const signInUrl = (req) => `${cfg.selfUrl || `${req.protocol}://${req.get("host")}`}/leaders/in/${L.signInKey(db, cfg)}`;
 
   app.get("/api/leaders/state", requireAdmin, (req, res) => {
     res.set("Cache-Control", "no-store");
@@ -99,10 +99,10 @@ export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAd
     recent.push(t); hits.set(ip, recent);
     return recent.length > 30;
   };
-  const keyed = (req, res, next) => (L.keyMatches(cfg, req.params.key) ? next() : res.status(404).json({ error: "Not found" }));
+  const keyed = (req, res, next) => (L.keyMatches(db, cfg, req.params.key) ? next() : res.status(404).json({ error: "Not found" }));
 
   app.get("/leaders/in/:key", (req, res) => {
-    if (!L.keyMatches(cfg, req.params.key)) return res.status(404).send("Not found");
+    if (!L.keyMatches(db, cfg, req.params.key)) return res.status(404).send("Not found");
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
     res.sendFile(path.join(root, "private", "leaders-in.html"));
   });
@@ -119,6 +119,12 @@ export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAd
     if (tooMany(req.ip)) return res.status(429).json({ error: "Too many tries. Please wait a little and try again." });
     reply(res, L.signIn(db, cfg, req.body || {}, now()), 201);
   });
+  // Retire every printed card and make a fresh code.
+  app.post("/api/leaders/signin/rotate", requireAdmin, (req, res) => {
+    const r = L.rotateSignInKey(db, cfg, now());
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ ok: true, url: signInUrl(req) });
+  });
   // The QR image for the printed card (admin only; the link inside it is the credential).
   app.get("/api/leaders/qr.svg", requireAdmin, async (req, res) => {
     const svg = await QRCode.toString(signInUrl(req), { type: "svg", margin: 2, width: 360, errorCorrectionLevel: "M" });
@@ -129,7 +135,7 @@ export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAd
   app.get("/api/admin/leaders", requireAdmin, (req, res) => {
     const base = cfg.selfUrl || `${req.protocol}://${req.get("host")}`;
     res.json({
-      url: `${base}/leaders`, signInUrl: `${base}/leaders/in/${L.signInKey(cfg)}`,
+      url: `${base}/leaders`, signInUrl: `${base}/leaders/in/${L.signInKey(db, cfg)}`,
       textsEnabled: cfg.leaders.textsEnabled, smsConfigured: smsConfigured(cfg), recipients: L.textable(db).length, people: L.listPeople(db).length,
     });
   });

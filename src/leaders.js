@@ -243,10 +243,11 @@ export function meetingDetail(db, cfg, date) {
 // from the same lists as everywhere else, and a checkbox for texts. That is how consent is captured: by the person,
 // on a form that shows exactly what they agree to, with that wording stored beside their name.
 //
-// The link carries a key derived from the admin password, so the printed card works every month but nobody who never
-// saw it can sign in, and changing the admin password retires every old card. It also only works while a meeting is
-// actually on (a couple of hours before to a few hours after), so a copy of the link cannot invent attendance for
-// some other night.
+// The link carries a random key that is stored here and has NOTHING to do with the admin password. (An earlier version
+// derived it from the password; every leader who scanned the card could then test password guesses offline, so a weak
+// password would have been recoverable from the QR code.) The printed card works every month; "Make a new code" on the
+// page retires every old card. The link also only works while a meeting is actually on (a couple of hours before to a
+// few hours after), so a copy of it cannot invent attendance for some other night.
 export const SIGNIN_OPENS_BEFORE = 2 * HOUR;
 export const SIGNIN_CLOSES_AFTER = 6 * HOUR;
 
@@ -255,13 +256,29 @@ export const CONSENT_TEXT =
   "with reminders for future missionary coordination meetings and updates about them. Message frequency varies, about 2 to 4 a month. " +
   "Message and data rates may apply. Reply STOP to opt out or HELP for help. Consent is not a condition of signing in.";
 
-export function signInKey(cfg) {
+const newKey = () => crypto.randomBytes(16).toString("base64url"); // 128 bits of randomness, 22 characters
+
+// The current key: LEADERS_SIGNIN_KEY if one is pinned, else the stored random one (made the first time it is needed).
+export function signInKey(db, cfg) {
   if (cfg.leadersKey) return cfg.leadersKey;
-  if (!cfg.adminPassword) return "";
-  return crypto.createHmac("sha256", cfg.adminPassword).update("leaders-signin").digest("base64url").slice(0, 22);
+  const row = db.prepare(`SELECT value FROM settings WHERE key = 'leaders_signin_key'`).get();
+  if (row) return row.value;
+  const k = newKey();
+  db.prepare(`INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('leaders_signin_key', ?, ?)`).run(k, Date.now());
+  return db.prepare(`SELECT value FROM settings WHERE key = 'leaders_signin_key'`).get().value;
 }
-export function keyMatches(cfg, given) {
-  const k = signInKey(cfg), g = String(given ?? "");
+
+// Throw away the old key: every printed card stops working. (No-op when a key is pinned by the environment.)
+export function rotateSignInKey(db, cfg, nowMs) {
+  if (cfg.leadersKey) return { error: "The key is set by LEADERS_SIGNIN_KEY in Railway, so change it there.", status: 409 };
+  db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('leaders_signin_key', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(newKey(), nowMs);
+  return { ok: true };
+}
+
+// Off entirely when there is no admin login: nobody could see the QR code to scan, so nothing public should answer.
+export function keyMatches(db, cfg, given) {
+  if (!cfg.adminPassword && !cfg.leadersKey) return false;
+  const k = signInKey(db, cfg), g = String(given ?? "");
   if (!k || k.length !== g.length) return false;
   return crypto.timingSafeEqual(Buffer.from(k), Buffer.from(g));
 }

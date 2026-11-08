@@ -45,7 +45,7 @@ The cancelled time opens up on the sign-up page for others.
 | `WAITLIST_HOLD_MINUTES` | `30` | How long a just-cancelled time is held for the wait-list (0 = no hold, just notify). Editable in Settings. |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
-| `LEADERS_SIGNIN_KEY` | _(derived from `ADMIN_PASSWORD`)_ | Optional fixed key in the QR sign-in link. By default the key comes from the admin password, so changing that password retires every printed QR card. |
+| `LEADERS_SIGNIN_KEY` | _(a random key stored in the database)_ | Optional fixed key for the QR sign-in link. By default the key is random and unrelated to any password; **Make a new code** on the Sign-in QR tab replaces it and retires every printed card. |
 | `MISSIONARY_KEY` | _(unset = missionary page off)_ | Secret in the missionaries' private link `/m/<key>` (page, downloads and live calendar feed). Change it to revoke the link. |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |
 | `DATA_DIR` | `./data` | Where the SQLite file lives. **On a host with a temporary disk, mount a volume here or sign-ups vanish on redeploy.** |

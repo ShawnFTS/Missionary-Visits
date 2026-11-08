@@ -105,7 +105,9 @@
       <p><img id="qrImg" alt="QR code for the meeting sign-in" width="260" height="260" style="border:1px solid var(--line);border-radius:12px;background:#fff"></p>
       <p id="qrStatus" class="when" style="font-weight:600"></p>
       <p class="inline" style="justify-content:center"><button class="btn" id="qrPrint">Print the card</button><button class="btn ghost" id="qrCopy">Copy the link</button></p>
-      <p class="fine">The same card works every month. It only lets people in from 2 hours before the meeting until 6 hours after, so it can't be used to add attendance for another night. If a card gets out, change the admin password in Railway and every old card stops working.</p>
+      <p class="fine">The same card works every month. It only lets people in from 2 hours before the meeting until 6 hours after, so it can't be used to add attendance for another night. The code has nothing to do with your admin password.</p>
+      <p class="fine">If a card gets out: <button class="btn danger small" id="qrNew">Make a new code</button> — every printed card stops working, so print the new one.</p>
+      <p class="err" id="qrMsg"></p>
       <p class="fine" id="qrUrl" style="word-break:break-all"></p>
     </section>
   </div>
@@ -330,6 +332,12 @@ function renderSignIn() {
   $("qrStatus").textContent = s.open ? `Sign-in is open now for ${s.openNow}.` : (s.opensText ? `Sign-in opens ${s.opensText}.` : "No upcoming meeting.");
   $("qrUrl").textContent = s.url;
 }
+$("qrNew").onclick = async () => {
+  if (!confirm("Make a new code? Every printed card stops working and you'll need to print the new one.")) return;
+  const r = await api("/api/leaders/signin/rotate", "POST", {});
+  if (!r.ok) return flash("qrMsg", r.data.error || "Couldn't make a new code.");
+  $("qrImg").dataset.set = ""; flash("qrMsg", "New code made. Print the new card.", true); load(true);
+};
 $("qrCopy").onclick = async (e) => { try { await navigator.clipboard.writeText(S.signin.url); e.target.textContent = "Copied ✓"; setTimeout(() => e.target.textContent = "Copy the link", 1500); } catch { prompt("Copy this link:", S.signin.url); } };
 $("qrPrint").onclick = () => {
   const w = window.open("", "_blank");
