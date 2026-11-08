@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ward Missionary Huddles</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  main { max-width: 820px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin: 18px 0 4px; }
+  .top p { margin: 0; color: var(--muted); font-size: .9rem; }
+  .ward { break-inside: avoid; page-break-inside: avoid; }
+  .ward h2 { margin: 0 0 2px; }
+  .when { font-weight: 600; color: var(--navy); }
+  .when.unset { color: var(--muted); font-weight: 400; font-style: italic; }
+  .meta { color: var(--muted); font-size: .85rem; margin: 2px 0 8px; }
+  .meta .stale { color: #8a5a00; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td a { color: var(--ink); }
+  .badge { display: inline-block; background: var(--gold-bg); color: #7a5a14; border-radius: 999px; padding: 0 8px; font-size: .75rem; font-weight: 700; margin-left: 6px; }
+  .none { color: var(--muted); font-style: italic; }
+  .note { background: var(--gold-bg); border-radius: 10px; padding: 10px 12px; font-size: .88rem; margin: 14px 0; }
+  @media print {
+    body { background: #fff; }
+    .hero, .noprint { display: none !important; }
+    .panel { box-shadow: none; border: 1px solid #bbb; margin: 10px 0; }
+    main { max-width: none; padding: 0; }
+    td a { text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<header class="hero small-hero"><div class="hero-inner"><h1>Ward Missionary Huddles</h1></div></header>
+<main>
+  <div class="top">
+    <p id="gen">Loading…</p>
+    <button class="btn ghost small noprint" id="print">Print or save as PDF</button>
+  </div>
+  <div id="note"></div>
+  <div id="wards"></div>
+</main>
+<script>
+const key = location.pathname.split("/").pop();
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+document.getElementById("print").onclick = () => window.print();
+(async () => {
+  const r = await fetch(`/api/huddles/${encodeURIComponent(key)}`);
+  const root = document.getElementById("wards");
+  if (!r.ok) { document.getElementById("gen").textContent = ""; document.getElementById("print").hidden = true; root.append(Object.assign(el("section", "panel"), {})); root.firstChild.append(el("h2", "serif", "Link not found"), el("p", "", "This link isn't valid any more. Please ask for the current one.")); return; }
+  const d = await r.json();
+  document.getElementById("gen").textContent = `As of ${d.generated}`;
+  if (d.youthPhonesHidden) document.getElementById("note").append(el("div", "note", "Youth phone numbers aren't listed. Please reach youth through their parents or leaders."));
+  for (const w of d.wards) {
+    const s = el("section", "panel ward");
+    s.append(el("h2", "serif", w.ward));
+    s.append(el("div", "when" + (w.when.startsWith("Day and time not set") ? " unset" : ""), w.when + (w.place ? ` · ${w.place}` : "")));
+    if (w.note) s.append(el("div", "meta", w.note));
+    const meta = el("div", "meta"); meta.append(el("span", /^Not/.test(w.confirmed) ? "stale" : "", w.confirmed)); s.append(meta);
+    if (!w.people.length) s.append(el("p", "none", "No one listed yet."));
+    else {
+      const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Calling</th><th>Phone</th></tr>"; s.append(t);
+      for (const p of w.people) {
+        const tr = el("tr"); const n = el("td", "", p.name); if (p.youth) n.append(el("span", "badge", "Youth"));
+        const ph = el("td"); if (p.phone) { const a = el("a", "", p.phone); a.href = "tel:" + p.phone.replace(/\D/g, ""); ph.append(a); } else ph.append(el("span", "none", p.youth ? "via parents" : "—"));
+        tr.append(n, el("td", "", p.youth ? "" : p.calling), ph); t.append(tr);
+      }
+    }
+    root.append(s);
+  }
+})();
+</script>
+</body>
+</html>

@@ -50,6 +50,7 @@
 <main>
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="meeting" aria-selected="true">Meeting</button>
+    <button role="tab" data-tab="huddles" aria-selected="false">Huddles</button>
     <button role="tab" data-tab="signin" aria-selected="false">Sign-in QR</button>
     <button role="tab" data-tab="people" aria-selected="false">People</button>
     <button role="tab" data-tab="messages" aria-selected="false">Messages</button>
@@ -94,6 +95,60 @@
       </details>
       <p class="inline"><button class="btn ghost" id="remind">Text a reminder now</button><span class="fine" id="remindNote"></span></p>
       <p class="err" id="rErr"></p>
+    </section>
+  </div>
+
+  <!-- ===== Huddles ===== -->
+  <div data-pane="huddles" hidden>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Ward huddles</h2>
+      <p class="fine">When each ward's missionary huddle meets and who is expected, so the list stays true. Adults already on the leaders list are linked in, so their name and number can't drift.</p>
+      <div id="hdSummary" style="overflow-x:auto"></div>
+    </section>
+
+    <section class="panel">
+      <label class="f">Ward <select id="hdWard"></select></label>
+      <div id="hdHead"></div>
+      <p class="inline"><button class="btn ghost" id="hdConfirm">This is all still right</button><span class="fine" id="hdConfirmNote"></span></p>
+      <h3 class="serif" style="margin:14px 0 6px">When they meet</h3>
+      <div class="grid">
+        <label class="f">How often <select id="hFreq"><option value="weekly">Every week</option><option value="nth">One week a month</option></select></label>
+        <label class="f" id="hNthWrap" hidden>Which week <select id="hNth"><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option></select></label>
+        <label class="f">Day <select id="hDay"></select></label>
+        <label class="f">Starts at <input type="time" id="hTime"></label>
+        <label class="f">Place <input type="text" id="hPlace" maxlength="60"></label>
+      </div>
+      <label class="f" style="margin-top:10px">Note (optional) <input type="text" id="hNote" maxlength="200" style="width:100%" placeholder="e.g. Youth join the last 15 minutes"></label>
+      <p class="inline"><button class="btn" id="hSaveSched">Save</button></p>
+      <p class="err" id="hSchedMsg"></p>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Who comes</h2>
+      <div id="hPeople" style="overflow-x:auto"></div>
+      <div id="hSuggest" class="chips"></div>
+      <h3 class="serif" style="margin:14px 0 6px" id="hpTitle">Add someone</h3>
+      <div class="grid">
+        <label class="f">Name <input type="text" id="hpName" maxlength="60" autocomplete="off"></label>
+        <label class="f">Mobile (optional) <input type="tel" id="hpPhone" placeholder="801-555-0123"></label>
+        <label class="f">Calling <select id="hpCalling"></select></label>
+      </div>
+      <p class="fine">Choose "Youth" for a young man or young woman. They are listed by name; their number is kept private unless you choose to include it when you send the list out.</p>
+      <p class="inline"><button class="btn" id="hpSave">Add</button><button class="btn ghost" id="hpReset" hidden>Cancel editing</button></p>
+      <p class="err" id="hpErr"></p>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Who came</h2>
+      <label class="f">Huddle <select id="hDate"></select></label>
+      <div id="hSheet"></div>
+      <p class="fine" id="hAvg"></p>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Send out the list</h2>
+      <p class="fine">A read-only page of every ward's huddle time and who is expected, with phone numbers you can tap to call. Nobody can open it without this link, and there is no link until you make one. It never texts anyone.</p>
+      <div id="hsBox"></div>
     </section>
   </div>
 
@@ -324,6 +379,152 @@ $("remind").onclick = async () => {
   flash("rErr", `Sent to ${r.data.texted} ${r.data.texted === 1 ? "person" : "people"}${r.data.failed ? `, ${r.data.failed} failed` : ""}.`, true);
   load(true);
 };
+
+// ===== Huddles =====
+let HD = null, hdWard = null, hdDate = null, hdEditing = null, hdSaved = "";
+const hdWardData = () => HD && HD.wards.find((w) => w.ward === hdWard);
+async function loadHuddles(keepWard) {
+  const r = await api("/api/leaders/huddles");
+  if (!r.ok) return;
+  HD = r.data;
+  if (!keepWard || !hdWardData()) hdWard = HD.wards[0] && HD.wards[0].ward;
+  renderHuddles();
+}
+function renderHuddles() {
+  // one line per ward, so the wards with nothing set stand out
+  const box = $("hdSummary"); box.replaceChildren();
+  const t = el("table"); t.innerHTML = "<tr><th>Ward</th><th>Meets</th><th>People</th><th></th></tr>"; box.append(t);
+  for (const w of HD.wards) {
+    const tr = el("tr");
+    const wc = el("td", "", w.ward); wc.append(el("br"), Object.assign(el("small", "", w.confirmed.date ? `Confirmed ${w.confirmed.date}${w.confirmed.stale ? " — check it" : ""}` : "Never confirmed"), { style: `color:${w.confirmed.stale ? "#8a5a00" : "var(--muted)"}` }));
+    tr.append(wc, el("td", "", w.schedule.label + (w.schedule.place ? " · " + w.schedule.place : "")), el("td", "", String(w.people.length)));
+    const td = el("td"); const go = el("button", "btn ghost small", "Open"); go.onclick = () => { hdWard = w.ward; hdDate = null; renderHuddles(); $("hdWard").scrollIntoView({ behavior: "smooth" }); };
+    td.append(go); tr.append(td); t.append(tr);
+  }
+  $("hdWard").replaceChildren(opts(HD.wards.map((w) => w.ward), hdWard)); $("hdWard").value = hdWard;
+  $("hDay").replaceChildren(opts(HD.weekdays.map((d, i) => ({ value: i, label: d })), ""));
+  $("hpCalling").replaceChildren(opts(HD.callings, $("hpCalling").value, "Choose a calling…"));
+  renderHuddleWard(); renderHuddleShare();
+}
+$("hdWard").onchange = (e) => { hdWard = e.target.value; hdDate = null; hdEditing = null; resetHP(); renderHuddles(); };
+$("hFreq").onchange = () => { $("hNthWrap").hidden = $("hFreq").value !== "nth"; };
+
+function renderHuddleWard() {
+  const w = hdWardData(); if (!w) return;
+  const s = w.schedule;
+  const head = $("hdHead"); head.replaceChildren(el("div", "when", s.label + (s.place ? " · " + s.place : "")));
+  if (w.next) head.append(el("div", "fine", "Next: " + w.next.label));
+  $("hdConfirmNote").textContent = w.confirmed.date ? `Last confirmed ${w.confirmed.date}${w.confirmed.stale ? " — it's been a while" : ""}.` : "Not confirmed yet.";
+  $("hdConfirmNote").style.color = w.confirmed.stale ? "#8a5a00" : "var(--muted)";
+  $("hFreq").value = s.freq; $("hNthWrap").hidden = s.freq !== "nth"; $("hNth").value = s.nth || 2;
+  $("hDay").value = s.weekday == null ? "" : s.weekday; $("hTime").value = s.time || ""; $("hPlace").value = s.place || ""; $("hNote").value = s.note || "";
+
+  // people
+  const box = $("hPeople"); box.replaceChildren();
+  if (!w.people.length) box.append(el("p", "fine", "No one yet. Add people below, or pick from the leaders list."));
+  else {
+    const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Calling</th><th>Phone</th><th></th></tr>"; box.append(t);
+    for (const p of w.people) {
+      const tr = el("tr"); const n = el("td", "", p.name); if (p.youth) n.append(" ", el("span", "badge moved", "Youth")); if (p.linked) n.append(" ", el("span", "badge next", "leaders list"));
+      const ph = p.phone ? p.phone.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "($1) $2-$3") : "—";
+      tr.append(n, el("td", "", p.youth ? "" : p.calling), el("td", "", ph));
+      const td = el("td"); const acts = el("div"); acts.style.cssText = "display:flex;flex-direction:column;gap:4px;align-items:stretch";
+      if (!p.linked) { const ed = el("button", "btn ghost small", "Edit"); ed.onclick = () => startHP(p); acts.append(ed); }
+      const rm = el("button", "btn danger small", "Remove");
+      rm.onclick = async () => { if (confirm(`Take ${p.name} off ${w.ward}'s list?`)) { await api(`/api/leaders/huddles/${encodeURIComponent(w.ward)}/people/${p.id}`, "DELETE"); loadHuddles(true); } };
+      acts.append(rm); td.append(acts); tr.append(td); t.append(tr);
+    }
+  }
+  const sg = $("hSuggest"); sg.replaceChildren();
+  if (w.suggestions.length) {
+    sg.append(el("div", "fine", "On the leaders list for this ward — tap to add:")); sg.style.display = "block";
+    for (const x of w.suggestions) {
+      const b = el("button", "btn ghost small", `+ ${x.name} (${x.calling})`); b.style.margin = "3px 6px 3px 0";
+      b.onclick = async () => { const r = await api(`/api/leaders/huddles/${encodeURIComponent(w.ward)}/people`, "POST", { leaderId: x.id }); if (!r.ok) alert(r.data.error); loadHuddles(true); };
+      sg.append(b);
+    }
+  } else sg.style.display = "none";
+
+  // attendance
+  const dates = [];
+  if (w.today) { const rec = w.recent.find((r) => r.date === w.today) || { date: w.today, label: "", recorded: false }; dates.push({ ...rec, label: "Today · " + rec.label }); } // keep its recorded/held/present status
+  for (const r of w.recent) if (r.date !== w.today) dates.push(r);
+  if (!w.schedule.set || !dates.length) { $("hDate").replaceChildren(opts([], "", "Set the day and time first")); $("hSheet").replaceChildren(); $("hAvg").textContent = ""; }
+  else {
+    if (!dates.some((d) => d.date === hdDate)) hdDate = dates[0].date;
+    $("hDate").replaceChildren(...dates.map((d) => Object.assign(el("option"), { value: d.date, selected: d.date === hdDate, textContent: (d.label.startsWith("Today") ? d.label : d.label) + (d.recorded ? (d.held ? ` — ${d.present} came` : " — didn't meet") : " — not recorded") })));
+    loadSheet();
+    $("hAvg").textContent = w.average == null ? "" : `Average attendance over the huddles that were held: ${w.average} of ${w.people.length} expected.`;
+  }
+}
+$("hDate").onchange = (e) => { hdDate = e.target.value; loadSheet(); };
+async function loadSheet() {
+  const r = await api(`/api/leaders/huddles/${encodeURIComponent(hdWard)}/${hdDate}`);
+  const box = $("hSheet"); box.replaceChildren();
+  if (!r.ok) return;
+  const d = r.data;
+  const held = Object.assign(el("input"), { type: "checkbox", checked: d.held !== false }); held.style.cssText = "width:22px;height:22px";
+  const hl = el("label", "inline"); hl.style.margin = "6px 0"; hl.append(held, " We met this day");
+  const list = el("div", "recips");
+  if (!d.people.length) list.append(el("p", "fine", "No one is on this ward's list yet."));
+  for (const p of d.people) { const l = el("label"); l.style.cssText = "display:block;font-weight:400;margin:6px 0"; const c = Object.assign(el("input"), { type: "checkbox", value: p.id, checked: p.present }); c.style.cssText = "width:22px;height:22px;vertical-align:middle;margin-right:8px"; l.append(c, p.name + (p.youth ? " (youth)" : "")); list.append(l); }
+  const note = Object.assign(el("input"), { type: "text", maxLength: 200, value: d.note || "", placeholder: "Note (optional)" }); note.style.cssText = "width:100%;margin:8px 0";
+  const save = el("button", "btn", "Save attendance"); const msg = el("p", "err");
+  held.onchange = () => { list.style.opacity = held.checked ? 1 : .4; list.querySelectorAll("input").forEach((c) => c.disabled = !held.checked); }; held.onchange();
+  save.onclick = async () => {
+    const ids = [...list.querySelectorAll("input:checked")].map((c) => Number(c.value));
+    const r2 = await api(`/api/leaders/huddles/${encodeURIComponent(hdWard)}/${d.date}`, "PUT", { held: held.checked, presentIds: ids, note: note.value });
+    if (!r2.ok) { msg.style.color = "var(--danger)"; msg.textContent = r2.data.error || "Couldn't save."; return; }
+    hdSaved = held.checked ? `Saved: ${r2.data.present} of ${r2.data.expected} came.` : "Saved: no huddle that day.";
+    await loadHuddles(true);
+  };
+  box.append(el("div", "fine", d.label), hl, list, note, save, msg);
+  if (hdSaved) { msg.style.color = "var(--open)"; msg.textContent = hdSaved; hdSaved = ""; } // said after the redraw, so it is not wiped by it
+}
+
+$("hSaveSched").onclick = async () => {
+  const r = await api(`/api/leaders/huddles/${encodeURIComponent(hdWard)}/schedule`, "POST", { freq: $("hFreq").value, nth: $("hNth").value, weekday: $("hDay").value, time: $("hTime").value, place: $("hPlace").value, note: $("hNote").value });
+  if (!r.ok) return flash("hSchedMsg", r.data.error || "Couldn't save.");
+  flash("hSchedMsg", "Saved.", true); loadHuddles(true);
+};
+$("hdConfirm").onclick = async () => { await api(`/api/leaders/huddles/${encodeURIComponent(hdWard)}/confirm`, "POST", {}); loadHuddles(true); };
+
+function startHP(p) { hdEditing = p.id; $("hpTitle").textContent = "Edit " + p.name; $("hpSave").textContent = "Save"; $("hpReset").hidden = false; $("hpName").value = p.name; $("hpPhone").value = p.phone ? p.phone.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3") : ""; $("hpCalling").value = p.calling; $("hpName").focus(); }
+function resetHP() { hdEditing = null; $("hpTitle").textContent = "Add someone"; $("hpSave").textContent = "Add"; $("hpReset").hidden = true; $("hpName").value = ""; $("hpPhone").value = ""; $("hpCalling").value = ""; flash("hpErr", ""); }
+$("hpReset").onclick = resetHP;
+$("hpSave").onclick = async () => {
+  const body = { name: $("hpName").value, phone: $("hpPhone").value, calling: $("hpCalling").value };
+  const w = encodeURIComponent(hdWard);
+  const r = hdEditing ? await api(`/api/leaders/huddles/${w}/people/${hdEditing}`, "PUT", body) : await api(`/api/leaders/huddles/${w}/people`, "POST", body);
+  if (!r.ok) return flash("hpErr", r.data.error || "Couldn't save.");
+  resetHP(); loadHuddles(true);
+};
+
+function renderHuddleShare() {
+  const s = HD.share, box = $("hsBox"); box.replaceChildren();
+  if (!s.on) {
+    const b = el("button", "btn", "Make a link to send out"); b.onclick = async () => { await api("/api/leaders/huddles/share", "POST", { action: "create" }); loadHuddles(true); };
+    box.append(b); return;
+  }
+  const url = Object.assign(el("input"), { type: "text", readOnly: true, value: s.url }); url.style.cssText = "width:100%;font-size:.85rem";
+  const row = el("p", "inline");
+  const copy = el("button", "btn", "Copy the link"); copy.onclick = async () => { try { await navigator.clipboard.writeText(s.url); copy.textContent = "Copied ✓"; setTimeout(() => copy.textContent = "Copy the link", 1500); } catch { prompt("Copy this link:", s.url); } };
+  const open = Object.assign(el("a", "btn ghost", "Open it / print"), { href: s.url, target: "_blank", rel: "noreferrer" });
+  const post = el("button", "btn ghost", "Post the link to the board"); post.onclick = async () => { const r = await api("/api/leaders/messages", "POST", { body: `The ward huddle list (times and who is expected): ${s.url}` }); alert(r.ok ? "Posted to the board on the Messages tab." : (r.data.error || "Couldn't post.")); load(true); };
+  const csv = Object.assign(el("a", "btn ghost", "Download as a spreadsheet"), { href: "/api/leaders/huddles.csv" });
+  row.append(copy, open, post, csv);
+  const yl = el("label", "inline"); yl.style.cssText = "margin:10px 0 2px;align-items:flex-start";
+  const yc = Object.assign(el("input"), { type: "checkbox", checked: s.showYouthPhones }); yc.style.cssText = "width:22px;height:22px;margin-top:2px";
+  yc.onchange = async () => { await api("/api/leaders/huddles/share", "POST", { showYouthPhones: yc.checked }); loadHuddles(true); };
+  yl.append(yc, el("span", "", "Include youth phone numbers on the list that gets sent out"));
+  const warn = el("p", "fine", s.showYouthPhones ? "Youth numbers are on the sent list. Anyone with the link can see them, so only share it with leaders." : "Youth are listed by name only. People are told to reach them through their parents or leaders. This is the safer choice.");
+  const danger = el("p", "fine"); 
+  const rot = el("button", "btn danger small", "Make a new link"); rot.onclick = async () => { if (confirm("Make a new link? Everyone who has the old one loses access until you send the new one.")) { await api("/api/leaders/huddles/share", "POST", { action: "rotate" }); loadHuddles(true); } };
+  const off = el("button", "btn danger small", "Turn the link off"); off.onclick = async () => { if (confirm("Turn the link off? Nobody can open the list until you make a new one.")) { await api("/api/leaders/huddles/share", "POST", { action: "off" }); loadHuddles(true); } };
+  danger.append("If the link gets out: ", rot, " ", off);
+  box.append(url, row, yl, warn, danger);
+}
+document.querySelector("[data-tab=huddles]").addEventListener("click", () => loadHuddles(true));
 
 // ===== Sign-in QR =====
 function renderSignIn() {

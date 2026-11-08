@@ -16,10 +16,11 @@ const HOUR = 3600_000;
 const MEETING_LENGTH = 3 * HOUR; // still "the current meeting" for a while after it starts
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-const clean = (v, max) => String(v ?? "").replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+export const clean = (v, max) => String(v ?? "").replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 const clean1 = (v, max) => String(v ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f‪-‮⁦-⁩<>]/g, "").trim().slice(0, max); // keeps newlines for messages
 
 export const wardChoices = (cfg) => [...cfg.wards, "Stake"];
+export const YOUTH = "Youth"; // a calling, but the one that changes how a person is shown and shared
 
 // ---- when -------------------------------------------------------------------------------------
 
@@ -80,7 +81,7 @@ export function meetingLists(db, cfg, nowMs) {
 
 // ---- settings (the meeting rule, the callings list, reminder timing) ---------------------------
 
-const time24 = (raw) => {
+export const time24 = (raw) => {
   const s = String(raw ?? "").trim();
   if (/^([01]\d|2[0-3]):[0-5]\d$/.test(s)) return s;
   return parseTime(s);

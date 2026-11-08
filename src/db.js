@@ -105,6 +105,29 @@ export function openDb(dir) {
     CREATE TABLE IF NOT EXISTS leaders_reminders_sent (
       meeting_date TEXT NOT NULL, kind TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY (meeting_date, kind)
     );
+    -- Ward missionary huddles. Deliberately separate from leaders_people: nothing here can ever be texted, and the
+    -- youth on these lists must never reach the leaders' text-message machinery by accident.
+    CREATE TABLE IF NOT EXISTS huddle_schedule (
+      ward TEXT PRIMARY KEY, freq TEXT NOT NULL DEFAULT 'weekly',   -- weekly | nth (e.g. the 2nd Sunday of the month)
+      weekday INTEGER, nth INTEGER, time TEXT, place TEXT, note TEXT,
+      confirmed_at INTEGER,                                          -- when someone last said "this is still right"
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS huddle_people (
+      id INTEGER PRIMARY KEY, ward TEXT NOT NULL,
+      leader_id INTEGER,                                             -- linked to the leaders list: name/phone/calling are read live from there
+      name TEXT, phone TEXT, calling TEXT,                           -- used when not linked (youth, ward missionaries, ...)
+      active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_huddle_people_ward ON huddle_people(ward, active);
+    CREATE TABLE IF NOT EXISTS huddle_log (
+      ward TEXT NOT NULL, date TEXT NOT NULL, held INTEGER NOT NULL DEFAULT 1, note TEXT, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (ward, date)
+    );
+    CREATE TABLE IF NOT EXISTS huddle_attendance (
+      ward TEXT NOT NULL, date TEXT NOT NULL, person_id INTEGER NOT NULL, name TEXT NOT NULL,   -- name as it was that day
+      PRIMARY KEY (ward, date, person_id)
+    );
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,

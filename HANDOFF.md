@@ -118,6 +118,25 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
   (3) the public Terms/Privacy/opt-in pages were intentionally NOT changed, because they are under Twilio review; add a leaders section when (1) and (2) are done.
 - Tests: 26 in `test/leaders.test.mjs` (includes the QR sign-in, its window and key, consent wording stored, repeat sign-ins); the whole suite passes. The QR image was decoded in a browser and matches the link.
 
+## Ward huddles (same branch, `claude/leaders-meeting`)
+- **What:** per ward — when the missionary huddle meets, who is expected (name, number, calling, youth included), who came to each one, and a list that can be sent
+  out. `src/huddles.js` (logic), `src/huddlesRoutes.js`, the **Huddles** tab in `private/leaders.html`, `private/huddles-share.html` (the sent-out page), `test/huddles.test.mjs`.
+- **Backend = admin login only**, like the rest of `/leaders` (`/api/leaders/huddles*`). The only public pieces are `/huddles/<key>` and `/api/huddles/<key>`.
+- **Schedules** (`huddle_schedule`): weekly on a weekday, or the Nth weekday of the month, plus time, place, note. A ward with nothing set reads "Day and time not set yet" and has no
+  dates — nothing is invented. Changing a ward's schedule keeps the huddles already logged.
+- **People** (`huddle_people`) are **separate from `leaders_people`** on purpose. A linked adult (`leader_id`) reads name/phone/calling live from the leaders list (and drops off if
+  removed there), so the two lists cannot drift; anyone else (youth, ward missionaries) is typed in. **Youth = calling "Youth"** (always offered even if the callings list is edited).
+- **Attendance** (`huddle_log`, `huddle_attendance`): tick who came, or mark "we didn't meet"; names are snapshotted; the average counts only huddles that were held.
+- **Freshness:** each ward has a `confirmed_at` ("This is all still right"); 60+ days old (or never) shows as stale on the backend and "Not confirmed yet" on the sent-out page. Editing does not count as confirming.
+- **Sent out:** a random 128-bit key in `settings` (`huddles_share_key`); no link exists until an admin makes one; **Make a new link** retires the old one; **Turn it off** removes it.
+  Youth phone numbers are **hidden by default** (`huddles_share_opts.showYouthPhones`) and the page tells readers to reach youth through parents or leaders. Also: CSV download
+  (admin copy includes youth numbers), "Post the link to the board" (a leaders-board message).
+- **No texting, by design:** there is no code path from a huddle list to `sendSms`. Youth are on these lists and nothing here can capture a parent's consent. (`huddles.test.mjs` asserts a
+  huddle person is never reachable by the leaders' texting, even if linked.)
+- **Defaults I chose without being told — change if wrong:** weekly or monthly cadence (nothing assumed per ward); admin-only editing (a ward-by-ward "each ward leader keeps their own list" link was considered and not built);
+  youth numbers hidden on the sent list; the sent list is a link/print/CSV, not a text.
+- Tests: 12 in `test/huddles.test.mjs`; the whole suite passes.
+
 ## Secrets (Railway → web → Variables; never in git or chat)
 `ADMIN_PASSWORD` (also opens `/leaders`), `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.

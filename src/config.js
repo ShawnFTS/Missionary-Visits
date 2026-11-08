@@ -37,7 +37,7 @@ export const LEADERS_DEFAULTS = {
   callings: [
     "Stake President", "Stake Presidency Counselor", "High Councilor", "Stake Mission Leader", "Stake Executive Secretary",
     "Bishop", "Bishopric Counselor", "Ward Mission Leader", "Ward Missionary", "Elders Quorum President",
-    "Relief Society President", "Full-time Missionary", "Other",
+    "Relief Society President", "Full-time Missionary", "Youth", "Other",
   ],
   reminderDays: 2,           // text this many days before, at reminderAt (0 = off)
   reminderAt: "09:00",

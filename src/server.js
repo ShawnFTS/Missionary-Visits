@@ -11,6 +11,7 @@ import * as analytics from "./analytics.js";
 import * as settings from "./settings.js";
 import * as leaders from "./leaders.js";
 import { mountLeaders } from "./leadersRoutes.js";
+import { mountHuddles } from "./huddlesRoutes.js";
 import * as waitlist from "./waitlist.js";
 import * as notes from "./notes.js";
 import { buildState, applySync } from "./sheetsync.js";
@@ -558,6 +559,7 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     res.set("Cache-Control", "no-store").redirect(302, start ? `/?start=${start}` : "/");
   });
   mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAdmin });
+  mountHuddles({ app, db, cfg, now, root, requireAdmin });
 
   app.use(express.static(path.join(root, "public"), { index: "index.html", extensions: ["html"] }));
   app.use((req, res) => res.status(404).send("Not found"));
