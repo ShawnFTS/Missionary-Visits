@@ -28,6 +28,23 @@ export function wardCodes(wards, raw) {
   return out;
 }
 
+// The missionary coordination meeting (stake leaders). Editable on /leaders; env only supplies the password.
+export const LEADERS_DEFAULTS = {
+  nth: 2,                    // 2nd ...
+  weekday: 4,                // ... Thursday (0 = Sunday)
+  time: "20:00",             // 8:00 PM
+  place: "Stake council room",
+  callings: [
+    "Stake President", "Stake Presidency Counselor", "High Councilor", "Stake Mission Leader", "Stake Executive Secretary",
+    "Bishop", "Bishopric Counselor", "Ward Mission Leader", "Ward Missionary", "Elders Quorum President",
+    "Relief Society President", "Full-time Missionary", "Other",
+  ],
+  reminderDays: 2,           // text this many days before, at reminderAt (0 = off)
+  reminderAt: "09:00",
+  reminderHours: 2,          // and this many hours before (0 = off)
+  textsEnabled: false,       // admin-only switch: nobody is texted until an admin turns this on
+};
+
 export const slotTimesOn = (cfg, dow) => cfg.schedule[dow] || [];
 export const allTimes = (cfg) => [...new Set(Object.values(cfg.schedule).flat())].sort();
 
@@ -55,6 +72,9 @@ export function loadConfig(env = process.env) {
     helpName: env.HELP_NAME ?? "Shawn Sandberg",
     helpPhone: env.HELP_PHONE ?? "801-404-4111",
     adminPassword: env.ADMIN_PASSWORD || "",
+    // Password for /leaders (any username). The admin password also works. Neither set = /leaders is off.
+    leadersPassword: env.LEADERS_PASSWORD || "",
+    leaders: { ...LEADERS_DEFAULTS, callings: [...LEADERS_DEFAULTS.callings] },
     // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
     missionaryKey: env.MISSIONARY_KEY || "",
     // Secret in the Google Sheet sync address (/api/sheet/<secret>/sync). Unset = the Sheet sync is off.

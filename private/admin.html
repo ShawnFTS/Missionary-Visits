@@ -150,6 +150,14 @@
       <h2 class="serif" style="font-size:1.05rem">Recent notifications</h2>
       <div id="notifLog" class="wide-tbl"></div>
     </section>
+    <section class="panel">
+      <h2 class="serif">Leaders page (missionary coordination meeting)</h2>
+      <p>The stake leaders have their own page for the monthly missionary coordination meeting: attendance, a message board, and meeting reminders.</p>
+      <div class="msg" id="ldBox"></div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="ldTexts"> <span><strong>Allow texts to leaders</strong> (meeting reminders and messages)</span></label>
+      <p class="fine" id="ldTextNote"></p>
+      <p class="err" id="ldMsg"></p>
+    </section>
   </div>
 
   <!-- ===== Settings ===== -->
@@ -386,7 +394,25 @@ loadWait();
 document.querySelector('[data-tab=visits]').addEventListener("click", loadWait);
 
 let editingId = null;
+async function loadLeadersAdmin() {
+  const d = await (await fetch("/api/admin/leaders")).json();
+  const box = $("ldBox"); box.replaceChildren();
+  box.append(el("strong", "", "Page: "), Object.assign(el("a", "", d.url), { href: d.url, target: "_blank", rel: "noreferrer" }), el("br"));
+  box.append(el("span", "", d.passwordSet ? "Password: set (LEADERS_PASSWORD in Railway). The admin password also works." : "No leaders password yet. Add LEADERS_PASSWORD in Railway → Variables and redeploy" + (d.adminPasswordWorks ? "; until then only the admin password opens it." : ".")));
+  box.append(el("br"), el("span", "", `${d.people} ${d.people === 1 ? "person" : "people"} on the leaders list, ${d.recipients} agreed to texts.`));
+  $("ldTexts").checked = d.textsEnabled;
+  $("ldTextNote").textContent = d.smsConfigured ? "Off by default. Turn on only after the leaders you add have agreed to be texted, and after Twilio's registration covers these messages."
+    : "Texting isn't connected yet (Twilio isn't set up), so nothing would be sent either way.";
+}
+$("ldTexts").onchange = async (e) => {
+  $("ldMsg").textContent = "";
+  const r = await post("/api/admin/leaders", { textsEnabled: e.target.checked });
+  if (!r.ok) { $("ldMsg").textContent = "Couldn't save."; e.target.checked = !e.target.checked; return; }
+  $("ldMsg").style.color = "var(--open)"; $("ldMsg").textContent = e.target.checked ? "Texts to leaders are ON." : "Texts to leaders are OFF.";
+};
+
 async function loadContacts() {
+  loadLeadersAdmin();
   const d = await (await fetch("/api/admin/contacts")).json();
   $("chanStatus").textContent = d.textReady ? "Texting: ✓ set up" : "Texting: ✗ not set up yet. Texts start once the Twilio number is approved and its settings are added in Railway.";
   const mb = $("mainBox"); mb.replaceChildren();

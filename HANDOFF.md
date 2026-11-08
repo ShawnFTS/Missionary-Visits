@@ -95,8 +95,30 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 - `SHEET_SECRET` is a new Railway variable (unset = the endpoints return 404). Treat it like `MISSIONARY_KEY`: it is the only credential.
 - The Sheet script and its tests live in `C:\Users\stein\Documents\Claude\missionary-sheet`.
 
+## Missionary coordination meeting — `/leaders` (branch `claude/leaders-meeting`)
+- **What:** a page for the stake missionary leaders' monthly meeting (default: 2nd Thursday, 8:00 PM, Stake council room). `src/leaders.js` (logic),
+  `src/leadersRoutes.js` (routes, mounted from `server.js`), `private/leaders.html` (one page, four tabs), `test/leaders.test.mjs`.
+- **Access:** `/leaders` is HTTP Basic (any username) with `LEADERS_PASSWORD`; the admin password also opens it. Neither set = 404. JSON bodies only.
+- **Meeting rule** (week-of-month, weekday, time, place), the **callings list** and the **reminder timing** are edited on the page (Settings tab) and stored
+  in the `settings` table under key `leaders`. A meeting is keyed by the date the rule gives it; cancelling or moving one keeps that key, so attendance,
+  board posts and sent reminders stay attached. Moving or cancelling clears that meeting's sent-reminder rows so reminders restart for the new time.
+- **Attendance:** `leaders_people` (roster: name, calling, ward, optional mobile, consent) and `leaders_attendance` (a snapshot of name/calling/ward per
+  meeting, so later roster edits don't rewrite history). Name, calling and ward are drop-downs; "Someone new…" adds the person to the roster.
+  Calling and ward are validated against the lists (wards = the rotation's wards + "Stake"). The meeting view shows wards represented and missing.
+- **Messages:** a board (`leaders_messages`) that works with no text service at all. A post can also be texted (`leaders_text_log` records each send).
+  Rate limit: 20 texted posts per 24 hours.
+- **Reminders:** `runLeaderReminders` (started from `index.js` beside the family reminders): days-before at a set time and hours-before; each claimed in
+  `leaders_reminders_sent` BEFORE sending; a "days before" text that would arrive within 3 hours of the meeting is skipped; cancelled meetings are silent.
+  "Text a reminder now" and "text everyone about this change" are on the meeting tab.
+- **Texting leaders is OFF by default** (`leaders.textsEnabled`, admin-only: `/admin` → Missionaries → Leaders page). It only reaches people with a mobile
+  AND `sms_ok`. **Open compliance items before turning it on:** (1) the Twilio toll-free verification covers family reminders, wait-list notices and the
+  missionaries' phone, **not** leaders' texts, so update the registration/opt-in description first; (2) `sms_ok` is currently recorded by whoever adds the person
+  ("they told me yes"), which is weaker than the web-form opt-in the verification describes — a self-serve opt-in page for leaders is the recommended next step;
+  (3) the public Terms/Privacy/opt-in pages were intentionally NOT changed, because they are under Twilio review; add a leaders section when (1) and (2) are done.
+- Tests: 15 new in `test/leaders.test.mjs`; the whole suite passes (71).
+
 ## Secrets (Railway → web → Variables; never in git or chat)
-`ADMIN_PASSWORD`, `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
+`ADMIN_PASSWORD`, `LEADERS_PASSWORD` (opens `/leaders`), `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.
 
 ## Deploying

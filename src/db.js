@@ -75,6 +75,34 @@ export function openDb(dir) {
       updated_at INTEGER NOT NULL, updated_by TEXT
     );
     CREATE INDEX IF NOT EXISTS ix_notes_followup ON visit_notes(followup_date);
+    -- Missionary coordination meeting (stake leaders). Keyed by the date the rule schedules it on; a meeting that is
+    -- cancelled or moved keeps that key so its attendance and reminders stay attached to it.
+    CREATE TABLE IF NOT EXISTS leaders_people (
+      id INTEGER PRIMARY KEY, name TEXT NOT NULL, calling TEXT NOT NULL, ward TEXT NOT NULL,
+      phone TEXT,                    -- E.164
+      sms_ok INTEGER NOT NULL DEFAULT 0, sms_ok_at INTEGER,   -- agreed to texts about this meeting
+      active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS leaders_meetings (
+      date TEXT PRIMARY KEY, cancelled INTEGER NOT NULL DEFAULT 0, note TEXT,
+      moved_date TEXT, moved_time TEXT, place TEXT, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS leaders_attendance (
+      id INTEGER PRIMARY KEY, meeting_date TEXT NOT NULL, person_id INTEGER NOT NULL,
+      name TEXT NOT NULL, calling TEXT NOT NULL, ward TEXT NOT NULL,   -- snapshot: the roster may change later
+      created_at INTEGER NOT NULL, UNIQUE (meeting_date, person_id)
+    );
+    CREATE TABLE IF NOT EXISTS leaders_messages (
+      id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL,   -- post | reminder | change
+      author TEXT, body TEXT NOT NULL, meeting_date TEXT, texted INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS leaders_text_log (
+      id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, person_id INTEGER, person_name TEXT, ok INTEGER NOT NULL, error TEXT
+    );
+    -- Claimed BEFORE the texts go out: better to miss a reminder than to send one twice.
+    CREATE TABLE IF NOT EXISTS leaders_reminders_sent (
+      meeting_date TEXT NOT NULL, kind TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY (meeting_date, kind)
+    );
     CREATE TABLE IF NOT EXISTS blocks (
       slot_date TEXT NOT NULL,
       slot_time TEXT NOT NULL,

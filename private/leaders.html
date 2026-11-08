@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Missionary Coordination Meeting</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  main { max-width: 900px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+  .tabs button { background: #fff; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); }
+  .tabs button[aria-selected=true] { background: var(--navy); color: #fff; border-color: var(--navy); }
+  select, input[type=text], input[type=tel], input[type=date], input[type=time], input[type=number], textarea { padding: 10px; font: inherit; font-size: 16px; border: 1.5px solid #c9c2b2; border-radius: 10px; background: #fff; color: var(--ink); max-width: 100%; }
+  textarea { width: 100%; }
+  label.f { display: block; font-weight: 600; margin: 0 0 10px; }
+  label.f > :not(span):not(br) { margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; align-items: end; }
+  .grid label.f { margin: 0; }
+  .grid select, .grid input { width: 100%; }
+  .meet h2 { margin: 0; }
+  .meet .when { font-size: 1.15rem; font-weight: 600; margin: 4px 0; color: var(--navy); }
+  .badge { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: .8rem; font-weight: 700; margin-right: 6px; }
+  .badge.cancelled { background: #f6dcd8; color: var(--danger); }
+  .badge.moved { background: var(--gold-bg); color: #7a5a14; }
+  .badge.next { background: var(--open-bg); color: var(--open); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .chip { border-radius: 999px; padding: 3px 10px; font-size: .85rem; font-weight: 600; }
+  .chip.here { background: var(--open-bg); color: var(--open); }
+  .chip.gone { background: #f6dcd8; color: var(--danger); }
+  .rows { display: grid; gap: 8px; margin: 10px 0; }
+  .arow { display: grid; grid-template-columns: 1.3fr 1.3fr 1fr auto; gap: 8px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .arow .nm { font-weight: 600; }
+  .arow select { width: 100%; }
+  @media (max-width: 640px) { .arow { grid-template-columns: 1fr; } }
+  .post { border-bottom: 1px solid var(--line); padding: 10px 0; }
+  .post:last-child { border-bottom: 0; }
+  .post .by { font-weight: 700; }
+  .post .meta { color: var(--muted); font-size: .8rem; }
+  .post.reminder, .post.change { background: var(--gold-bg); border-radius: 8px; padding: 8px 10px; margin: 6px 0; border-bottom: 0; }
+  .note { background: var(--gold-bg); border-radius: 10px; padding: 10px 12px; font-size: .9rem; margin: 10px 0; }
+  .ok { color: var(--open); font-weight: 600; }
+  details summary { cursor: pointer; font-weight: 600; margin: 8px 0; }
+  .inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .recips label { display: block; font-weight: 400; margin: 3px 0; }
+</style>
+</head>
+<body>
+<header class="hero small-hero"><div class="hero-inner"><h1>Missionary Coordination Meeting</h1><p id="rule" style="margin:0;color:#dbe5f3"></p></div></header>
+<main>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="meeting" aria-selected="true">Meeting</button>
+    <button role="tab" data-tab="people" aria-selected="false">People</button>
+    <button role="tab" data-tab="messages" aria-selected="false">Messages</button>
+    <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+  </div>
+
+  <!-- ===== Meeting ===== -->
+  <div data-pane="meeting">
+    <section class="panel meet">
+      <label class="f">Meeting <select id="mSel"></select></label>
+      <div id="mHead"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Who attended</h2>
+      <div id="wards" class="chips"></div>
+      <div id="rows" class="rows"></div>
+      <h3 class="serif" style="margin-bottom:6px">Add someone</h3>
+      <div class="grid">
+        <label class="f">Name <select id="aPerson"></select></label>
+        <label class="f" id="aNewWrap" hidden>New person's name <input type="text" id="aNew" maxlength="60" autocomplete="off"></label>
+        <label class="f">Calling <select id="aCalling"></select></label>
+        <label class="f">Ward <select id="aWard"></select></label>
+        <button class="btn" id="aAdd">Add to the list</button>
+      </div>
+      <p class="err" id="aErr"></p>
+    </section>
+
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">This meeting</h2>
+      <details id="chg"><summary>Cancel or move this meeting</summary>
+        <label class="inline" style="margin:6px 0"><input type="checkbox" id="cCancel" style="width:22px;height:22px"> This meeting is cancelled</label>
+        <div class="grid">
+          <label class="f">Move to date <input type="date" id="cDate"></label>
+          <label class="f">Start time <input type="time" id="cTime"></label>
+          <label class="f">Place <input type="text" id="cPlace" maxlength="60"></label>
+        </div>
+        <label class="f" style="margin-top:10px">Note for the board <input type="text" id="cNote" maxlength="200" style="width:100%" placeholder="e.g. Council room is booked"></label>
+        <label class="inline" style="margin:6px 0"><input type="checkbox" id="cNotify" style="width:22px;height:22px"> Also text everyone about this change <span class="fine" id="cNotifyNote"></span></label>
+        <p class="inline"><button class="btn" id="cSave">Save change</button></p>
+        <p class="err" id="cErr"></p>
+      </details>
+      <p class="inline"><button class="btn ghost" id="remind">Text a reminder now</button><span class="fine" id="remindNote"></span></p>
+      <p class="err" id="rErr"></p>
+    </section>
+  </div>
+
+  <!-- ===== People ===== -->
+  <div data-pane="people" hidden>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">People</h2>
+      <p class="fine">Everyone who comes to the meeting. Add someone here once and pick them from the list at each meeting.</p>
+      <div id="plist" style="overflow-x:auto"></div>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0" id="pTitle">Add a person</h2>
+      <div class="grid">
+        <label class="f">Name <input type="text" id="pName" maxlength="60" autocomplete="off"></label>
+        <label class="f">Calling <select id="pCalling"></select></label>
+        <label class="f">Ward <select id="pWard"></select></label>
+        <label class="f">Mobile (optional) <input type="tel" id="pPhone" placeholder="801-555-0123"></label>
+      </div>
+      <label class="inline" style="margin:12px 0 4px;align-items:flex-start"><input type="checkbox" id="pOk" style="width:22px;height:22px;margin-top:2px">
+        <span>This person agreed to get text messages about this meeting from Missionary Visits (reminders and updates, a few a month). They can reply STOP at any time.</span></label>
+      <p class="fine" style="margin:0 0 8px">Only tick this if they told you so. Without it, they are never texted.</p>
+      <p class="inline"><button class="btn" id="pSave">Save</button><button class="btn ghost" id="pReset" hidden>Cancel editing</button></p>
+      <p class="err" id="pErr"></p>
+    </section>
+  </div>
+
+  <!-- ===== Messages ===== -->
+  <div data-pane="messages" hidden>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Post a message</h2>
+      <div id="tNote" class="note" hidden></div>
+      <label class="f" style="max-width:320px">From <select id="mFrom"></select></label>
+      <textarea id="mBody" rows="3" maxlength="400" placeholder="Write a message for the leaders…"></textarea>
+      <div class="fine"><span id="mCount">0</span>/400</div>
+      <label class="inline" style="margin:8px 0"><input type="checkbox" id="mText" style="width:22px;height:22px"> Also send this as a text message</label>
+      <details class="recips" id="mRecips" hidden><summary>Choose who gets the text</summary><div id="mRecipList"></div></details>
+      <p class="inline"><button class="btn" id="mSend">Post</button></p>
+      <p class="err" id="mErr"></p>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Board</h2>
+      <div id="board"></div>
+    </section>
+  </div>
+
+  <!-- ===== Settings ===== -->
+  <div data-pane="settings" hidden>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">When and where</h2>
+      <div class="grid">
+        <label class="f">Which week <select id="sNth"><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option></select></label>
+        <label class="f">Day <select id="sDay"></select></label>
+        <label class="f">Starts at <input type="time" id="sTime"></label>
+        <label class="f">Place <input type="text" id="sPlace" maxlength="60"></label>
+      </div>
+      <p class="fine" id="sRule"></p>
+      <p class="inline"><button class="btn" id="sSaveRule">Save</button></p>
+      <p class="err" id="sRuleMsg"></p>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Reminders</h2>
+      <p class="fine">Texts to people who agreed to them. Set a number to 0 to turn that reminder off.</p>
+      <div class="grid">
+        <label class="f">Days before <input type="number" id="sRDays" min="0" max="14" style="width:90px"></label>
+        <label class="f">…sent at <input type="time" id="sRAt"></label>
+        <label class="f">Hours before the meeting <input type="number" id="sRHours" min="0" max="24" style="width:90px"></label>
+      </div>
+      <p class="fine" id="sTexts"></p>
+      <p class="inline"><button class="btn" id="sSaveRem">Save</button></p>
+      <p class="err" id="sRemMsg"></p>
+    </section>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Callings in the drop-down</h2>
+      <textarea id="sCallings" rows="10"></textarea>
+      <p class="fine">One per line. Changing this never changes past attendance lists.</p>
+      <p class="inline"><button class="btn" id="sSaveCall">Save</button></p>
+      <p class="err" id="sCallMsg"></p>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const api = async (path, method, body) => {
+  const r = await fetch(path, { method: method || (body ? "POST" : "GET"), headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  let data = {}; try { data = await r.json(); } catch {}
+  return { ok: r.ok, status: r.status, data };
+};
+const opts = (list, value, blank) => {
+  const frag = document.createDocumentFragment();
+  if (blank) frag.append(Object.assign(el("option"), { value: "", textContent: blank }));
+  for (const o of list) { const v = typeof o === "string" ? o : o.value, t = typeof o === "string" ? o : o.label; frag.append(Object.assign(el("option"), { value: v, textContent: t, selected: v === value })); }
+  return frag;
+};
+const flash = (id, text, good) => { const e = $(id); e.textContent = text || ""; e.style.color = good ? "var(--open)" : "var(--danger)"; };
+
+let S = null, cur = null, detail = null, editingPerson = null;
+
+// ---- tabs ----
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll("[data-pane]").forEach((p) => p.hidden = p.dataset.pane !== b.dataset.tab);
+});
+
+async function load(keepMeeting) {
+  const r = await api("/api/leaders/state");
+  if (!r.ok) { document.body.textContent = "Couldn't load. Please refresh."; return; }
+  S = r.data;
+  $("rule").textContent = S.settings.rule;
+  const all = [...S.meetings.upcoming, ...S.meetings.past];
+  if (!keepMeeting || !all.some((m) => m.date === cur)) cur = (S.meetings.upcoming[0] || all[0] || {}).date;
+  renderMeetingPicker(); renderPeople(); renderMessages(); renderSettings();
+  await loadMeeting();
+}
+
+// ===== Meeting =====
+function renderMeetingPicker() {
+  const sel = $("mSel"); sel.replaceChildren();
+  const mk = (m, i, up) => Object.assign(el("option"), { value: m.date, selected: m.date === cur, textContent: `${m.shortLabel}${m.cancelled ? " — cancelled" : ""}${up && i === 0 ? " — next" : ""}${!up ? ` — ${m.attendees} attended` : ""}` });
+  const up = el("optgroup"); up.label = "Coming up"; S.meetings.upcoming.forEach((m, i) => up.append(mk(m, i, true)));
+  const past = el("optgroup"); past.label = "Past meetings"; S.meetings.past.forEach((m, i) => past.append(mk(m, i, false)));
+  sel.append(up); if (S.meetings.past.length) sel.append(past);
+}
+$("mSel").onchange = (e) => { cur = e.target.value; loadMeeting(); };
+
+async function loadMeeting() {
+  if (!cur) return;
+  const r = await api(`/api/leaders/meetings/${cur}`);
+  if (!r.ok) return;
+  detail = r.data;
+  const m = detail.meeting;
+  const head = $("mHead"); head.replaceChildren();
+  const isNext = S.meetings.upcoming[0]?.date === cur;
+  const badges = el("div");
+  if (isNext) badges.append(el("span", "badge next", "Next meeting"));
+  if (m.cancelled) badges.append(el("span", "badge cancelled", "Cancelled"));
+  else if (m.moved) badges.append(el("span", "badge moved", "Changed from the usual"));
+  head.append(badges, el("div", "when", `${m.dayLabel} · ${m.timeLabel}`), el("div", "", m.place));
+  if (m.note) head.append(el("div", "note", m.note));
+
+  // attendance
+  const chips = $("wards"); chips.replaceChildren();
+  for (const w of detail.represented) chips.append(el("span", "chip here", "✓ " + w));
+  for (const w of detail.missing) chips.append(el("span", "chip gone", w));
+  const rows = $("rows"); rows.replaceChildren();
+  if (!detail.attendees.length) rows.append(el("p", "fine", "No one has been added to this meeting yet."));
+  for (const a of detail.attendees) {
+    const row = el("div", "arow");
+    const call = el("select"); call.append(opts(callingList(a.calling), a.calling));
+    const ward = el("select"); ward.append(opts(S.settings.wards.includes(a.ward) ? S.settings.wards : [...S.settings.wards, a.ward], a.ward));
+    const save = async () => { const r = await api(`/api/leaders/meetings/${cur}/attendance/${a.id}`, "PUT", { calling: call.value, ward: ward.value }); if (!r.ok) alert(r.data.error || "Couldn't save."); loadMeeting(); };
+    call.onchange = save; ward.onchange = save;
+    const rm = el("button", "btn danger small", "Remove");
+    rm.onclick = async () => { await api(`/api/leaders/meetings/${cur}/attendance/${a.id}`, "DELETE"); loadMeeting(); load(true); };
+    row.append(el("div", "nm", a.name), call, ward, rm); rows.append(row);
+  }
+  renderAddForm();
+
+  // change panel
+  $("cCancel").checked = m.cancelled; $("cDate").value = m.effectiveDate !== m.date ? m.effectiveDate : ""; $("cTime").value = m.time; $("cPlace").value = m.place; $("cNote").value = m.note || "";
+  $("cDate").placeholder = m.date;
+  $("chg").open = m.cancelled || m.moved;
+  const ready = S.texts.ready;
+  $("cNotify").disabled = !ready; if (!ready) $("cNotify").checked = false;
+  $("cNotifyNote").textContent = ready ? "" : "(texting leaders isn't turned on)";
+  $("remind").disabled = !ready;
+  $("remindNote").textContent = ready ? `Goes to ${S.texts.recipients} ${S.texts.recipients === 1 ? "person" : "people"} who agreed to texts.` : "Texting leaders isn't turned on yet.";
+}
+const callingList = (current) => (S.settings.callings.includes(current) ? S.settings.callings : [...S.settings.callings, current]);
+
+function renderAddForm() {
+  const attending = new Set(detail.attendees.map((a) => a.personId));
+  const sel = $("aPerson"); sel.replaceChildren();
+  sel.append(Object.assign(el("option"), { value: "", textContent: "Choose a name…" }));
+  for (const p of S.people) if (!attending.has(p.id)) sel.append(Object.assign(el("option"), { value: p.id, textContent: p.name }));
+  sel.append(Object.assign(el("option"), { value: "__new", textContent: "Someone new…" }));
+  $("aCalling").replaceChildren(opts(S.settings.callings, "", "Choose a calling…"));
+  $("aWard").replaceChildren(opts(S.settings.wards, "", "Choose a ward…"));
+  $("aNewWrap").hidden = true; $("aNew").value = ""; $("aErr").textContent = "";
+}
+$("aPerson").onchange = (e) => {
+  const v = e.target.value;
+  $("aNewWrap").hidden = v !== "__new";
+  const p = S.people.find((x) => String(x.id) === v);
+  if (p) { $("aCalling").value = p.calling; $("aWard").value = p.ward; } // their usual calling and ward, changeable
+};
+$("aAdd").onclick = async () => {
+  const v = $("aPerson").value;
+  if (!v) return flash("aErr", "Choose a name first.");
+  const body = { calling: $("aCalling").value, ward: $("aWard").value };
+  if (v === "__new") body.name = $("aNew").value; else body.personId = Number(v);
+  if (!body.calling || !body.ward) return flash("aErr", "Choose a calling and a ward.");
+  const r = await api(`/api/leaders/meetings/${cur}/attendance`, "POST", body);
+  if (!r.ok) return flash("aErr", r.data.error || "Couldn't add.");
+  await load(true);
+};
+
+$("cSave").onclick = async () => {
+  flash("cErr", "");
+  const r = await api(`/api/leaders/meetings/${cur}/update`, "POST", {
+    cancelled: $("cCancel").checked, movedDate: $("cDate").value, movedTime: $("cTime").value, place: $("cPlace").value, note: $("cNote").value, notify: $("cNotify").checked,
+  });
+  if (!r.ok) { flash("cErr", r.data.error || "Couldn't save."); if (r.data.saved) await load(true); return; }
+  flash("cErr", r.data.notified ? `Saved. Texted ${r.data.notified.texted} ${r.data.notified.texted === 1 ? "person" : "people"}.` : "Saved.", true);
+  await load(true);
+};
+$("remind").onclick = async () => {
+  if (!confirm("Text everyone who agreed to texts a reminder about this meeting?")) return;
+  flash("rErr", "");
+  const r = await api(`/api/leaders/meetings/${cur}/remind`, "POST", {});
+  if (!r.ok) return flash("rErr", r.data.error || "Couldn't send.");
+  flash("rErr", `Sent to ${r.data.texted} ${r.data.texted === 1 ? "person" : "people"}${r.data.failed ? `, ${r.data.failed} failed` : ""}.`, true);
+  load(true);
+};
+
+// ===== People =====
+function renderPeople() {
+  const box = $("plist"); box.replaceChildren();
+  if (!S.people.length) box.textContent = "No one yet. Add people below, or add them right from a meeting.";
+  else {
+    const t = el("table"); t.innerHTML = "<tr><th>Name</th><th>Calling</th><th>Ward</th><th>Mobile</th><th>Texts</th><th></th></tr>"; box.append(t);
+    for (const p of S.people) {
+      const tr = el("tr");
+      for (const v of [p.name, p.calling, p.ward, p.phone || "—", p.smsOk ? "✓ agreed" : "—"]) tr.append(el("td", "", v));
+      const td = el("td"); td.style.whiteSpace = "nowrap";
+      const ed = el("button", "btn ghost small", "Edit"); ed.onclick = () => startEdit(p);
+      const rm = el("button", "btn danger small", "Remove");
+      rm.onclick = async () => { if (confirm(`Remove ${p.name} from the list? Past attendance lists keep their name.`)) { await api(`/api/leaders/people/${p.id}/remove`, "POST", {}); load(true); } };
+      td.append(ed, " ", rm); tr.append(td); t.append(tr);
+    }
+  }
+  $("pCalling").replaceChildren(opts(S.settings.callings, $("pCalling").value, "Choose a calling…"));
+  $("pWard").replaceChildren(opts(S.settings.wards, $("pWard").value, "Choose a ward…"));
+}
+function startEdit(p) {
+  editingPerson = p.id; $("pTitle").textContent = "Edit " + p.name; $("pReset").hidden = false;
+  $("pName").value = p.name; $("pCalling").value = p.calling; $("pWard").value = p.ward; $("pPhone").value = p.phone; $("pOk").checked = p.smsOk;
+  $("pName").focus(); window.scrollTo({ top: $("pName").getBoundingClientRect().top + scrollY - 120, behavior: "smooth" });
+}
+function resetPerson() {
+  editingPerson = null; $("pTitle").textContent = "Add a person"; $("pReset").hidden = true;
+  $("pName").value = ""; $("pCalling").value = ""; $("pWard").value = ""; $("pPhone").value = ""; $("pOk").checked = false; flash("pErr", "");
+}
+$("pReset").onclick = resetPerson;
+$("pSave").onclick = async () => {
+  const r = await api("/api/leaders/people", "POST", { id: editingPerson, name: $("pName").value, calling: $("pCalling").value, ward: $("pWard").value, phone: $("pPhone").value, smsOk: $("pOk").checked });
+  if (!r.ok) return flash("pErr", r.data.error || "Couldn't save.");
+  resetPerson(); load(true);
+};
+
+// ===== Messages =====
+function renderMessages() {
+  $("mFrom").replaceChildren(opts(S.people.map((p) => ({ value: p.id, label: p.name })), $("mFrom").value, "Choose your name…"));
+  const t = S.texts, note = $("tNote");
+  $("mText").disabled = !t.ready; if (!t.ready) $("mText").checked = false;
+  note.hidden = t.ready;
+  note.textContent = !t.enabled ? "Text messages to leaders are turned off. You can still post here, and everyone sees it on this page. An administrator can turn texting on once people have agreed to it."
+    : "Texting leaders is turned on, but no text service is connected right now, so posts stay on this page.";
+  const list = $("mRecipList"); list.replaceChildren();
+  const textable = S.people.filter((p) => p.smsOk);
+  $("mRecips").hidden = !t.ready || !textable.length;
+  for (const p of textable) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.checked = true; c.value = p.id; l.append(c, ` ${p.name} — ${p.ward}`); list.append(l); }
+  const board = $("board"); board.replaceChildren();
+  if (!S.messages.length) board.textContent = "No messages yet.";
+  for (const m of S.messages) {
+    const d = el("div", "post " + m.kind);
+    const head = el("div"); if (m.author) head.append(el("span", "by", m.author + " "));
+    head.append(el("span", "meta", m.when + (m.texted || m.failed ? ` · texted ${m.texted}${m.failed ? `, ${m.failed} failed` : ""}` : "")));
+    const body = el("div", "", m.body); body.style.whiteSpace = "pre-wrap";
+    d.append(head, body); board.append(d);
+  }
+}
+$("mBody").oninput = (e) => $("mCount").textContent = e.target.value.length;
+$("mSend").onclick = async () => {
+  const body = { fromId: $("mFrom").value || null, body: $("mBody").value, alsoText: $("mText").checked };
+  if (body.alsoText) body.recipientIds = [...document.querySelectorAll("#mRecipList input:checked")].map((c) => Number(c.value));
+  const r = await api("/api/leaders/messages", "POST", body);
+  if (!r.ok) return flash("mErr", r.data.error || "Couldn't post.");
+  $("mBody").value = ""; $("mCount").textContent = "0";
+  flash("mErr", body.alsoText ? `Posted and texted ${r.data.texted} ${r.data.texted === 1 ? "person" : "people"}${r.data.failed ? `, ${r.data.failed} failed` : ""}.` : "Posted.", true);
+  load(true);
+};
+
+// ===== Settings =====
+function renderSettings() {
+  const s = S.settings;
+  $("sDay").replaceChildren(opts(s.weekdays.map((d, i) => ({ value: i, label: d })), String(s.weekday)));
+  $("sDay").value = s.weekday; $("sNth").value = s.nth; $("sTime").value = s.time; $("sPlace").value = s.place;
+  $("sRule").textContent = "Now: " + s.rule + ".";
+  $("sRDays").value = s.reminderDays; $("sRAt").value = s.reminderAt; $("sRHours").value = s.reminderHours;
+  $("sCallings").value = s.callings.join("\n");
+  $("sTexts").textContent = S.texts.ready ? `Texting leaders is on. Reminders go to ${S.texts.recipients} ${S.texts.recipients === 1 ? "person" : "people"} who agreed.`
+    : "Texting leaders is off, so no reminders are being sent. An administrator turns this on.";
+}
+async function saveSettings(body, msg) {
+  flash(msg, "Saving…", true);
+  const r = await api("/api/leaders/settings", "POST", body);
+  if (!r.ok) return flash(msg, r.data.error || "Couldn't save.");
+  flash(msg, "Saved.", true); load(true);
+}
+$("sSaveRule").onclick = () => saveSettings({ nth: $("sNth").value, weekday: $("sDay").value, time: $("sTime").value, place: $("sPlace").value }, "sRuleMsg");
+$("sSaveRem").onclick = () => saveSettings({ reminderDays: $("sRDays").value, reminderAt: $("sRAt").value, reminderHours: $("sRHours").value }, "sRemMsg");
+$("sSaveCall").onclick = () => saveSettings({ callings: $("sCallings").value }, "sCallMsg");
+
+load();
+</script>
+</body>
+</html>

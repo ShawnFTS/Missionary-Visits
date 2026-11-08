@@ -9,6 +9,8 @@ import { buildIcs, buildMissionaryIcs, googleCalendarUrl } from "./ics.js";
 import { smsConfigured } from "./sms.js";
 import * as analytics from "./analytics.js";
 import * as settings from "./settings.js";
+import * as leaders from "./leaders.js";
+import { mountLeaders } from "./leadersRoutes.js";
 import * as waitlist from "./waitlist.js";
 import * as notes from "./notes.js";
 import { buildState, applySync } from "./sheetsync.js";
@@ -23,6 +25,7 @@ const same = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
 
 export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
   settings.loadStored(db, cfg); // saved admin settings win over env defaults
+  leaders.loadLeaders(db, cfg); // and the leaders meeting rule, callings and reminder timing
   // Injected in tests; otherwise the real Twilio sender when configured, null (inert) when not.
   sendSms = sendSms !== undefined ? sendSms : smsConfigured(cfg) ? makeTwilioSender(cfg) : null;
   const tell = (kind, booking, by) => {
@@ -554,6 +557,8 @@ export function createApp({ db, cfg, now = () => Date.now(), sendSms }) {
     const start = nextWardWeek(cfg, now(), ward, activeBookings(), blockedSet());
     res.set("Cache-Control", "no-store").redirect(302, start ? `/?start=${start}` : "/");
   });
+  mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAdmin });
+
   app.use(express.static(path.join(root, "public"), { index: "index.html", extensions: ["html"] }));
   app.use((req, res) => res.status(404).send("Not found"));
   app.use((err, req, res, next) => {

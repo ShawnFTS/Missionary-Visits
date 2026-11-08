@@ -3,6 +3,7 @@ import { openDb } from "./db.js";
 import { createApp } from "./server.js";
 import { smsConfigured, makeTwilioSender } from "./sms.js";
 import { startReminders } from "./reminders.js";
+import { startLeaderReminders } from "./leaders.js";
 
 const cfg = loadConfig();
 const db = openDb(cfg.dataDir);
@@ -13,5 +14,10 @@ app.listen(cfg.port, () => {
   console.log(`Missionary visits sign-up on :${cfg.port}`);
   console.log(smsConfigured(cfg) ? "Text reminders: ON" : "Text reminders: off (set TWILIO_* to enable)");
   console.log(cfg.adminPassword ? "Admin: /admin" : "Admin: off (set ADMIN_PASSWORD to enable)");
+  console.log(cfg.leadersPassword || cfg.adminPassword ? "Leaders: /leaders" : "Leaders: off (set LEADERS_PASSWORD to enable)");
 });
-if (smsConfigured(cfg)) startReminders({ db, cfg, send: makeTwilioSender(cfg) });
+if (smsConfigured(cfg)) {
+  const send = makeTwilioSender(cfg);
+  startReminders({ db, cfg, send });
+  startLeaderReminders({ db, cfg, send }); // texts only if an admin has turned on texting leaders
+}
