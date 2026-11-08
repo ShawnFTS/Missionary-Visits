@@ -14,7 +14,7 @@ app.listen(cfg.port, () => {
   console.log(`Missionary visits sign-up on :${cfg.port}`);
   console.log(smsConfigured(cfg) ? "Text reminders: ON" : "Text reminders: off (set TWILIO_* to enable)");
   console.log(cfg.adminPassword ? "Admin: /admin" : "Admin: off (set ADMIN_PASSWORD to enable)");
-  console.log(cfg.leadersPassword || cfg.adminPassword ? "Leaders: /leaders" : "Leaders: off (set LEADERS_PASSWORD to enable)");
+  console.log(cfg.adminPassword ? "Leaders: /leaders (admin login)" : "Leaders: off (set ADMIN_PASSWORD to enable)");
 });
 if (smsConfigured(cfg)) {
   const send = makeTwilioSender(cfg);

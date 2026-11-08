@@ -12,7 +12,7 @@ const servers = [];
 after(() => servers.forEach((s) => { s.closeAllConnections?.(); s.close(); }));
 
 function start({ db = openDb(":memory:"), env = {}, none = false, failFor = [], clock = { t: NOW } } = {}) {
-  const cfg = loadConfig({ ADMIN_PASSWORD: "pw", LEADERS_PASSWORD: "lead", SELF_URL: "https://x.test", ...env });
+  const cfg = loadConfig({ ADMIN_PASSWORD: "pw", SELF_URL: "https://x.test", ...env });
   const sent = [];
   const sendSms = none ? null : async (to, body) => { if (failFor.includes(to)) throw new Error("carrier rejected"); sent.push({ to, body }); };
   const server = createApp({ db, cfg, now: () => clock.t, sendSms }).listen(0);
@@ -20,7 +20,7 @@ function start({ db = openDb(":memory:"), env = {}, none = false, failFor = [], 
   const base = `http://127.0.0.1:${server.address().port}`;
   const auth = (p) => ({ Authorization: "Basic " + Buffer.from(`x:${p}`).toString("base64") });
   const j = (p, body, headers = {}, method) => fetch(base + p, { method: method || (body ? "POST" : "GET"), headers: { "Content-Type": "application/json", ...headers }, body: body && JSON.stringify(body) });
-  const l = (p, body, method) => j(p, body, auth("lead"), method);
+  const l = (p, body, method) => j(p, body, auth("pw"), method); // the backend is admin-only
   const a = (p, body) => j(p, body, auth("pw"));
   return { db, cfg, base, j, l, a, auth, sent, clock, sendSms };
 }
@@ -37,17 +37,19 @@ test("2nd Thursday math, including months that start on a Thursday", () => {
   assert.deepEqual(scheduledDates(cfg, "2026-11-01", "2027-01-31"), ["2026-11-12", "2026-12-10", "2027-01-14"]);
 });
 
-test("off until a password exists; the leaders or the admin password opens it; wrong ones do not", async () => {
-  const off = start({ env: { ADMIN_PASSWORD: "", LEADERS_PASSWORD: "" } });
+test("the backend is admin-only, and 404 when there is no admin password", async () => {
+  const off = start({ env: { ADMIN_PASSWORD: "" } });
   assert.equal((await off.j("/leaders")).status, 404);
   assert.equal((await off.j("/api/leaders/state")).status, 404);
 
   const t = start();
-  assert.equal((await t.j("/leaders")).status, 401);
-  assert.equal((await t.j("/api/leaders/state", null, t.auth("nope"))).status, 401);
-  assert.equal((await t.l("/api/leaders/state")).status, 200);
-  assert.equal((await t.a("/api/leaders/state")).status, 200); // the admin password also works
-  assert.equal((await t.j("/api/admin/leaders", null, t.auth("lead"))).status, 401); // but the leaders password is not admin
+  for (const path of ["/leaders", "/api/leaders/state", "/api/leaders/qr.svg", "/api/leaders/meetings/2026-11-12"]) {
+    assert.equal((await t.j(path)).status, 401, path);                                  // not signed in
+    assert.equal((await t.j(path, null, t.auth("nope"))).status, 401, path);            // wrong password
+    assert.equal((await t.j(path, null, t.auth("pw"))).status, 200, path);              // the admin password
+  }
+  assert.equal((await t.j("/api/leaders/people", { name: "x" })).status, 401);
+  assert.equal((await t.j("/api/leaders/messages", { body: "x" })).status, 401);
 });
 
 test("the next meeting is the 2nd Thursday at 8 PM in the stake council room", async () => {
@@ -138,7 +140,7 @@ test("the board works with texting off; texting needs the admin switch, consent 
   assert.equal((await t.l("/api/leaders/messages", { body: "hi", alsoText: true })).status, 400); // switch is off
   assert.equal(t.sent.length, 0);
 
-  assert.equal((await t.l("/api/admin/leaders", { textsEnabled: true })).status, 401); // leaders can't flip it
+  assert.equal((await t.j("/api/admin/leaders", { textsEnabled: true })).status, 401); // not without signing in
   assert.equal((await t.a("/api/admin/leaders", { textsEnabled: true })).status, 200);
   r = await t.l("/api/leaders/messages", { fromId: from, body: "Bring your ward numbers.", alsoText: true });
   assert.equal(r.status, 201);
@@ -292,9 +294,202 @@ test("admin sees where the page is and can switch leaders' texts on and off", as
   await person(t, { name: "Sister Lee", calling: "Bishop", ward: "Stake", phone: "801-555-0101", smsOk: true });
   let s = await (await t.a("/api/admin/leaders")).json();
   assert.equal(s.url, "https://x.test/leaders");
-  assert.deepEqual([s.passwordSet, s.textsEnabled, s.recipients, s.people], [true, false, 1, 1]);
+  assert.deepEqual([s.textsEnabled, s.recipients, s.people], [false, 1, 1]);
   await t.a("/api/admin/leaders", { textsEnabled: true });
   assert.equal((await (await t.a("/api/admin/leaders")).json()).textsEnabled, true);
   await t.a("/api/admin/leaders", { textsEnabled: false });
   assert.equal(t.cfg.leaders.textsEnabled, false);
+});
+
+// ---- QR sign-in -----------------------------------------------------------------------------
+const MEETING_NIGHT = zonedToUtc("2026-11-12", "19:30", "America/Denver"); // half an hour before the 8 PM start
+const keyOf = async (t) => new URL((await (await t.j("/api/leaders/state", null, t.auth(t.cfg.adminPassword))).json()).signin.url).pathname.split("/").pop();
+const signin = (t, key, o = {}, headers = {}) => t.j(`/api/signin/${key}`, { name: "Brother Tan", phone: "801-555-0111", calling: "Bishop", ward: "White Hills", consent: true, ...o }, headers);
+
+test("the QR card: a stable link with a key, a real QR image, admin-only", async () => {
+  const t = start();
+  const s = await (await t.l("/api/leaders/state")).json();
+  assert.match(s.signin.url, /^https:\/\/x\.test\/leaders\/in\/[\w-]{22}$/);
+  assert.equal(s.signin.open, false);
+  assert.match(s.signin.opensText, /Thursday, November 12 at 6:00 PM/);          // two hours before the 8 PM start
+  const qr = await t.l("/api/leaders/qr.svg");
+  assert.equal(qr.status, 200);
+  assert.match(qr.headers.get("content-type"), /image\/svg\+xml/);
+  assert.match(await qr.text(), /^<svg /);
+  // the same key every time (so a printed card keeps working); a different admin password gives a different key
+  assert.equal((await (await t.l("/api/leaders/state")).json()).signin.url, s.signin.url);
+  const other = start({ env: { ADMIN_PASSWORD: "different" } });
+  assert.notEqual(await keyOf(other), await keyOf(t));
+  assert.equal(start({ env: { LEADERS_SIGNIN_KEY: "fixedkey123" } }).cfg.leadersKey, "fixedkey123");
+});
+
+test("a wrong or missing key reaches nothing", async () => {
+  const t = start();
+  assert.equal((await t.j("/leaders/in/nope")).status, 404);
+  assert.equal((await t.j("/api/signin/nope")).status, 404);
+  assert.equal((await t.j("/api/signin/nope", { name: "x" })).status, 404);
+  const off = start({ env: { ADMIN_PASSWORD: "" } });
+  assert.equal((await off.j("/leaders/in/")).status, 404);
+  assert.equal((await off.j("/api/signin/")).status, 404);
+});
+
+test("the sign-in page and its info are public with the key, and only open while the meeting is on", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  const page = await t.j(`/leaders/in/${key}`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Missionary Coordination Meeting/);
+
+  let info = await (await t.j(`/api/signin/${key}`)).json();
+  assert.equal(info.open, false);
+  assert.match(info.opensText, /November 12/);
+  assert.ok(info.callings.includes("Ward Mission Leader") && info.wards.includes("Stake") && info.wards.includes("Harmony"));
+  assert.match(info.consent, /text messages from Missionary Visits \(operated by FIDUS Technology Solutions LLC\)/);
+  assert.match(info.consent, /Reply STOP/);
+
+  const closed = await signin(t, key);
+  assert.equal(closed.status, 409);
+  assert.match((await closed.json()).error, /isn't open yet/);
+
+  t.clock.t = MEETING_NIGHT;
+  info = await (await t.j(`/api/signin/${key}`)).json();
+  assert.equal(info.open, true);
+  assert.deepEqual([info.meeting.timeLabel, info.meeting.place], ["8:00 PM", "Stake council room"]);
+
+  // the window: opens 2 hours before, closes 6 hours after the start
+  t.clock.t = zonedToUtc("2026-11-12", "17:59", "America/Denver");
+  assert.equal((await (await t.j(`/api/signin/${key}`)).json()).open, false);
+  t.clock.t = zonedToUtc("2026-11-12", "18:01", "America/Denver");
+  assert.equal((await (await t.j(`/api/signin/${key}`)).json()).open, true);
+  t.clock.t = zonedToUtc("2026-11-13", "01:59", "America/Denver");
+  assert.equal((await (await t.j(`/api/signin/${key}`)).json()).open, true);
+  t.clock.t = zonedToUtc("2026-11-13", "02:01", "America/Denver");
+  assert.equal((await (await t.j(`/api/signin/${key}`)).json()).open, false);
+});
+
+test("signing in: puts the person on the roster and the meeting's list, with their consent and its wording", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  const r = await signin(t, key);
+  assert.equal(r.status, 201);
+  const out = await r.json();
+  assert.deepEqual([out.ok, out.already, out.texts, out.name], [true, false, true, "Brother Tan"]);
+  assert.match(out.meeting.dayLabel, /Thursday, November 12/);
+
+  const detail = await (await t.l("/api/leaders/meetings/2026-11-12")).json();
+  assert.deepEqual(detail.attendees.map((a) => [a.name, a.calling, a.ward, a.source]), [["Brother Tan", "Bishop", "White Hills", "qr"]]);
+  assert.deepEqual(detail.represented, ["White Hills"]);
+
+  const p = (await (await t.l("/api/leaders/state")).json()).people[0];
+  assert.deepEqual([p.name, p.phone, p.smsOk, p.smsSource], ["Brother Tan", "(801) 555-0111", true, "self sign-in (QR)"]);
+  const row = t.db.prepare("SELECT * FROM leaders_people").get();
+  assert.equal(row.sms_ok_at, MEETING_NIGHT);
+  assert.match(row.sms_ok_text, /^By checking this box you agree to receive text messages from Missionary Visits/); // the exact wording they saw
+  // the signed-in person is now someone a reminder can reach
+  await enableTexts(t);
+  assert.equal((await t.l("/api/leaders/meetings/2026-11-12/remind", {})).status, 200);
+  assert.deepEqual(t.sent.map((m) => m.to), ["+18015550111"]);
+});
+
+test("signing in: no texts unless they tick the box, and ticking needs a number", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  let r = await signin(t, key, { name: "Sister Kim", phone: "801-555-0122", consent: false });
+  assert.equal(r.status, 201);
+  assert.equal((await r.json()).texts, false);
+  let p = (await (await t.l("/api/leaders/state")).json()).people.find((x) => x.name === "Sister Kim");
+  assert.deepEqual([p.phone, p.smsOk], ["(801) 555-0122", false]);
+  assert.equal(t.db.prepare("SELECT sms_ok_text FROM leaders_people WHERE name = 'Sister Kim'").get().sms_ok_text, null);
+
+  r = await signin(t, key, { name: "No Number", phone: "", consent: true });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /mobile number to get texts/);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people WHERE name = 'No Number'").get().n, 0); // a refused form leaves nothing behind
+
+  r = await signin(t, key, { name: "No Number", phone: "", consent: false });   // a number is optional if they don't want texts
+  assert.equal(r.status, 201);
+  assert.equal(t.db.prepare("SELECT phone FROM leaders_people WHERE name = 'No Number'").get().phone, null);
+});
+
+test("signing in: the dropdown values and the form are checked", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  for (const bad of [{ name: "" }, { name: "  " }, { calling: "Emperor" }, { calling: "" }, { ward: "Narnia" }, { ward: "" }, { phone: "12" }]) {
+    assert.equal((await signin(t, key, bad)).status, 400, JSON.stringify(bad));
+  }
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people").get().n, 0);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_attendance").get().n, 0);
+  // markup in a name is stripped, not stored
+  assert.equal((await signin(t, key, { name: "<b>Tan</b>" })).status, 201);
+  assert.ok(!(await (await t.l("/api/leaders/state")).json()).people.some((p) => /[<>]/.test(p.name)));
+});
+
+test("signing in twice, or a returning leader: one entry, updated, consent never silently removed", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  await signin(t, key);
+  const again = await (await signin(t, key, { calling: "Ward Mission Leader", ward: "Harmony", consent: false })).json();
+  assert.equal(again.already, true);
+  assert.equal(again.texts, true); // unticking on a second pass does not withdraw (STOP does)
+  const detail = await (await t.l("/api/leaders/meetings/2026-11-12")).json();
+  assert.equal(detail.attendees.length, 1);
+  assert.deepEqual([detail.attendees[0].calling, detail.attendees[0].ward], ["Ward Mission Leader", "Harmony"]);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people").get().n, 1);
+
+  // next month, same phone, new spelling and a new calling: the same person, updated
+  t.clock.t = zonedToUtc("2026-12-10", "19:30", "America/Denver");
+  const r = await signin(t, key, { name: "Bro. Tan", calling: "Bishop", ward: "White Hills" });
+  assert.equal(r.status, 201);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people").get().n, 1);
+  assert.equal(t.db.prepare("SELECT name FROM leaders_people").get().name, "Bro. Tan");
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_attendance WHERE meeting_date = '2026-12-10'").get().n, 1);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_attendance WHERE meeting_date = '2026-11-12'").get().n, 1); // November untouched
+});
+
+test("a person an admin added earlier is matched by name and keeps working", async () => {
+  const t = start();
+  await person(t, { name: "Brother Jones", calling: "High Councilor", ward: "Harmony" });
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  const r = await signin(t, key, { name: "brother jones", phone: "801-555-0199", calling: "High Councilor", ward: "Stake", consent: true });
+  assert.equal(r.status, 201);
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM leaders_people").get().n, 1); // not a second Brother Jones
+  const p = t.db.prepare("SELECT * FROM leaders_people").get();
+  assert.deepEqual([p.ward, p.phone, p.sms_ok, p.sms_ok_source], ["Stake", "+18015550199", 1, "self sign-in (QR)"]);
+});
+
+test("a cancelled meeting cannot be signed in to; a moved one follows its new time", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  await t.l("/api/leaders/meetings/2026-11-12/update", { cancelled: true });
+  t.clock.t = MEETING_NIGHT;
+  assert.equal((await signin(t, key)).status, 409);
+  assert.equal((await (await t.j(`/api/signin/${key}`)).json()).open, false);
+
+  await t.l("/api/leaders/meetings/2026-11-12/update", { cancelled: false, movedDate: "2026-11-19" });
+  assert.equal((await signin(t, key)).status, 409);                                  // Nov 12 at 7:30 PM is no longer the meeting
+  t.clock.t = zonedToUtc("2026-11-19", "19:30", "America/Denver");
+  const r = await signin(t, key);
+  assert.equal(r.status, 201);
+  assert.equal(t.db.prepare("SELECT meeting_date FROM leaders_attendance").get().meeting_date, "2026-11-12"); // still filed under the meeting's own key
+});
+
+test("sign-in is rate limited", async () => {
+  const t = start();
+  const key = await keyOf(t);
+  t.clock.t = MEETING_NIGHT;
+  let last;
+  for (let i = 0; i < 32; i++) last = await signin(t, key, { name: "", phone: "" }, {});
+  assert.equal(last.status, 429);
+});
+
+test("what an admin sees: where the sign-in link is", async () => {
+  const t = start();
+  const s = await (await t.a("/api/admin/leaders")).json();
+  assert.match(s.signInUrl, /^https:\/\/x\.test\/leaders\/in\/[\w-]{22}$/);
+  assert.equal(s.passwordSet, undefined);
 });

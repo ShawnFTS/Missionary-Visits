@@ -12,7 +12,7 @@ A plain sign-up sheet for hosting the missionaries. No ads, no accounts, no them
   the **missionary calendar link** (subscribe once; new sign-ups and cancellations flow to their phones), and
   **visitor stats** (anonymous: one cookie per browser, device/browser type, where visitors came from; no IPs or names).
 - **Wait-list:** when a week is full, the page offers "Join the wait-list" (family name, mobile, text consent; shown only when texting is set up). When a visit in that week cancels, waiting families are texted first with a private link, and the freed time is **held for them** (30 minutes by default; `/admin` → Settings → Wait-list) before it opens to everyone. First to tap Book wins.
-- **`/leaders` — the missionary coordination meeting** (2nd Thursday of the month, 8:00 PM, Stake council room; all editable on the page). Behind its own password. Per meeting: an attendance list (name, calling and ward are all drop-downs; "Someone new…" adds to the roster), wards represented/missing, cancel or move one meeting. A message board for the leaders, and an automatic reminder (2 days before at 9 AM and 2 hours before by default). Texting leaders is **off until an admin turns it on** and only reaches people recorded as having agreed.
+- **`/leaders` — the missionary coordination meeting** (2nd Thursday of the month, 8:00 PM, Stake council room; all editable on the page). The backend is behind the **admin login**: attendance lists per meeting (name, calling and ward as drop-downs), wards represented/missing, cancel or move one meeting, a message board, and automatic reminder texts. **People sign themselves in** by scanning a QR code (`/leaders/in/<key>`, printable from the page): name and mobile typed, calling and ward chosen, plus a checkbox to get texts for future meetings and updates. The link only works from 2 hours before the meeting to 6 hours after. Texting leaders is **off until an admin turns it on** and only reaches people who ticked the box.
 - Tag links to see where visitors come from: `/?src=harmony`. Open `/?notrack` on your own devices so you don't count.
 
 ## Run it
@@ -45,7 +45,7 @@ The cancelled time opens up on the sign-up page for others.
 | `WAITLIST_HOLD_MINUTES` | `30` | How long a just-cancelled time is held for the wait-list (0 = no hold, just notify). Editable in Settings. |
 | `SITE_TZ` | `America/Denver` | Time zone for the times above |
 | `ADMIN_PASSWORD` | _(unset = admin off)_ | Password for `/admin` (any username) |
-| `LEADERS_PASSWORD` | _(unset = `/leaders` off, unless `ADMIN_PASSWORD` is set)_ | Password for `/leaders` (any username). The admin password also works there. |
+| `LEADERS_SIGNIN_KEY` | _(derived from `ADMIN_PASSWORD`)_ | Optional fixed key in the QR sign-in link. By default the key comes from the admin password, so changing that password retires every printed QR card. |
 | `MISSIONARY_KEY` | _(unset = missionary page off)_ | Secret in the missionaries' private link `/m/<key>` (page, downloads and live calendar feed). Change it to revoke the link. |
 | `SELF_URL` | | Public address, e.g. `https://visits.example.org` — put in texts and calendar files |
 | `DATA_DIR` | `./data` | Where the SQLite file lives. **On a host with a temporary disk, mount a volume here or sign-ups vanish on redeploy.** |

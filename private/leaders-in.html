@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Meeting Sign-in — Missionary Visits</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  main { max-width: 520px; }
+  select, input[type=text], input[type=tel] { display: block; width: 100%; margin-top: 6px; padding: 12px; font: inherit; font-size: 16px; border: 1.5px solid #c9c2b2; border-radius: 10px; background: #fff; color: var(--ink); }
+  label.f { display: block; font-weight: 600; margin-bottom: 14px; }
+  .consent { display: flex; gap: 12px; align-items: flex-start; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 4px 0 14px; }
+  .consent input { width: 24px; height: 24px; flex: none; margin-top: 2px; accent-color: var(--navy); }
+  .consent span { font-size: .85rem; color: var(--ink); }
+  .consent a { color: var(--navy); }
+  .when { color: var(--navy); font-weight: 600; margin: 2px 0 14px; }
+  .done { text-align: center; padding: 8px 0; }
+  .done h2 { margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<header class="hero small-hero"><div class="hero-inner"><h1>Missionary Coordination Meeting</h1></div></header>
+<main>
+  <section class="panel" id="box"><p>Loading…</p></section>
+</main>
+<script>
+const key = location.pathname.split("/").pop();
+const box = document.getElementById("box");
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const opts = (list, blank) => { const f = document.createDocumentFragment(); f.append(Object.assign(el("option"), { value: "", textContent: blank })); for (const o of list) f.append(Object.assign(el("option"), { value: o, textContent: o })); return f; };
+
+async function show() {
+  const r = await fetch(`/api/signin/${encodeURIComponent(key)}`);
+  box.replaceChildren();
+  if (!r.ok) { box.append(el("h2", "serif", "Link not found"), el("p", "", "This sign-in link isn't valid. Please scan the code on the table again.")); return; }
+  const info = await r.json();
+  if (!info.open) {
+    box.append(el("h2", "serif", "Sign-in isn't open"), el("p", "", info.opensText ? `Sign-in opens ${info.opensText}.` : "There's no meeting to sign in to right now."));
+    return;
+  }
+  const form = el("form"); form.noValidate = true;
+  const f = (label, input) => { const l = el("label", "f"); l.append(label, input); return l; };
+  const name = Object.assign(el("input"), { type: "text", name: "name", maxLength: 60, autocomplete: "name", required: true });
+  const phone = Object.assign(el("input"), { type: "tel", name: "phone", autocomplete: "tel", inputMode: "tel", placeholder: "(801) 555-0123" });
+  const calling = el("select"); calling.append(opts(info.callings, "Choose your calling…"));
+  const ward = el("select"); ward.append(opts(info.wards, "Choose your ward…"));
+  const consent = Object.assign(el("input"), { type: "checkbox", name: "consent" });
+  const cw = el("label", "consent"); const cs = el("span", "");
+  cs.append(info.consent + " ", Object.assign(el("a", "", "Terms"), { href: "/terms", target: "_blank" }), " · ", Object.assign(el("a", "", "Privacy Policy"), { href: "/privacy", target: "_blank" }));
+  const strong = el("strong", "", "Text me reminders for future meetings and updates. "); cs.prepend(strong);
+  cw.append(consent, cs);
+  const err = el("p", "err"); err.setAttribute("role", "alert");
+  const go = Object.assign(el("button", "btn wide", "Sign in"), { type: "submit" });
+  form.append(
+    el("div", "when", `${info.meeting.dayLabel} · ${info.meeting.timeLabel} · ${info.meeting.place}`),
+    f("Your name", name), f("Mobile number (needed only if you want texts)", phone), f("Calling", calling), f("Ward", ward), cw, err, go);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); err.textContent = ""; go.disabled = true;
+    try {
+      const res = await fetch(`/api/signin/${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.value, phone: phone.value, calling: calling.value, ward: ward.value, consent: consent.checked }) });
+      const d = await res.json();
+      if (!res.ok) { err.textContent = d.error || "Something went wrong."; go.disabled = false; return; }
+      box.replaceChildren();
+      const done = el("div", "done");
+      done.append(el("h2", "serif", d.already ? "You were already signed in" : "You're signed in"), el("p", "big", d.name),
+        el("p", "", `${d.meeting.dayLabel} · ${d.meeting.timeLabel}`),
+        el("p", "fine", d.texts ? "You'll get text reminders for future meetings. Reply STOP any time to stop." : "No texts will be sent to you."));
+      box.append(done);
+    } catch { err.textContent = "Couldn't reach the server. Please check your connection and try again."; go.disabled = false; }
+  };
+  box.append(form);
+}
+show();
+</script>
+</body>
+</html>

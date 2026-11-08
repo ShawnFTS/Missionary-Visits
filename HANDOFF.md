@@ -98,7 +98,8 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
 ## Missionary coordination meeting — `/leaders` (branch `claude/leaders-meeting`)
 - **What:** a page for the stake missionary leaders' monthly meeting (default: 2nd Thursday, 8:00 PM, Stake council room). `src/leaders.js` (logic),
   `src/leadersRoutes.js` (routes, mounted from `server.js`), `private/leaders.html` (one page, four tabs), `test/leaders.test.mjs`.
-- **Access:** `/leaders` is HTTP Basic (any username) with `LEADERS_PASSWORD`; the admin password also opens it. Neither set = 404. JSON bodies only.
+- **Access:** the whole backend (`/leaders` and `/api/leaders/*`) is behind the **admin login** only (HTTP Basic, same as `/admin`); no admin password = 404. There is no separate leaders password. JSON bodies only.
+- **QR sign-in (the one public piece):** `GET /leaders/in/<key>` is the form people reach by scanning the printed card (the card is shown and printed from the page's Sign-in QR tab; `/api/leaders/qr.svg` is admin-only). Fields: name and mobile typed, calling and ward drop-downs, and a checkbox for texts. `POST /api/signin/<key>` puts the person on the roster (matched by phone, then name) and on the meeting's list (`leaders_attendance.source = 'qr'`). The key is an HMAC of the admin password (`LEADERS_SIGNIN_KEY` pins one instead), so changing the admin password retires every old card. It only works from 2 hours before the meeting to 6 hours after (`SIGNIN_OPENS_BEFORE/CLOSES_AFTER`), never for a cancelled meeting, 30 tries per IP per hour. Ticking the box records `sms_ok`, the time, the source and the **exact wording shown** (`CONSENT_TEXT`); not ticking on a later visit never removes consent (STOP does).
 - **Meeting rule** (week-of-month, weekday, time, place), the **callings list** and the **reminder timing** are edited on the page (Settings tab) and stored
   in the `settings` table under key `leaders`. A meeting is keyed by the date the rule gives it; cancelling or moving one keeps that key, so attendance,
   board posts and sent reminders stay attached. Moving or cancelling clears that meeting's sent-reminder rows so reminders restart for the new time.
@@ -115,10 +116,10 @@ not taken effect yet (bare domain still showed GoDaddy's placeholder). `SELF_URL
   missionaries' phone, **not** leaders' texts, so update the registration/opt-in description first; (2) `sms_ok` is currently recorded by whoever adds the person
   ("they told me yes"), which is weaker than the web-form opt-in the verification describes — a self-serve opt-in page for leaders is the recommended next step;
   (3) the public Terms/Privacy/opt-in pages were intentionally NOT changed, because they are under Twilio review; add a leaders section when (1) and (2) are done.
-- Tests: 15 new in `test/leaders.test.mjs`; the whole suite passes (71).
+- Tests: 26 in `test/leaders.test.mjs` (includes the QR sign-in, its window and key, consent wording stored, repeat sign-ins); the whole suite passes. The QR image was decoded in a browser and matches the link.
 
 ## Secrets (Railway → web → Variables; never in git or chat)
-`ADMIN_PASSWORD`, `LEADERS_PASSWORD` (opens `/leaders`), `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
+`ADMIN_PASSWORD` (also opens `/leaders` and derives the QR sign-in key), `MISSIONARY_KEY` (the secret in the missionaries' link; change it to revoke the link),
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, plus `DATA_DIR=/data`, `SELF_URL`.
 
 ## Deploying

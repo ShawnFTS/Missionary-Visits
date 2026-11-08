@@ -81,6 +81,7 @@ export function openDb(dir) {
       id INTEGER PRIMARY KEY, name TEXT NOT NULL, calling TEXT NOT NULL, ward TEXT NOT NULL,
       phone TEXT,                    -- E.164
       sms_ok INTEGER NOT NULL DEFAULT 0, sms_ok_at INTEGER,   -- agreed to texts about this meeting
+      sms_ok_source TEXT, sms_ok_text TEXT,                   -- how, and the exact wording they saw when they agreed
       active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS leaders_meetings (
@@ -90,6 +91,7 @@ export function openDb(dir) {
     CREATE TABLE IF NOT EXISTS leaders_attendance (
       id INTEGER PRIMARY KEY, meeting_date TEXT NOT NULL, person_id INTEGER NOT NULL,
       name TEXT NOT NULL, calling TEXT NOT NULL, ward TEXT NOT NULL,   -- snapshot: the roster may change later
+      source TEXT NOT NULL DEFAULT 'list',                             -- 'list' (an admin added them) | 'qr' (signed themselves in)
       created_at INTEGER NOT NULL, UNIQUE (meeting_date, person_id)
     );
     CREATE TABLE IF NOT EXISTS leaders_messages (

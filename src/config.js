@@ -28,7 +28,7 @@ export function wardCodes(wards, raw) {
   return out;
 }
 
-// The missionary coordination meeting (stake leaders). Editable on /leaders; env only supplies the password.
+// The missionary coordination meeting (stake leaders). Editable on /leaders (admin login).
 export const LEADERS_DEFAULTS = {
   nth: 2,                    // 2nd ...
   weekday: 4,                // ... Thursday (0 = Sunday)
@@ -72,8 +72,9 @@ export function loadConfig(env = process.env) {
     helpName: env.HELP_NAME ?? "Shawn Sandberg",
     helpPhone: env.HELP_PHONE ?? "801-404-4111",
     adminPassword: env.ADMIN_PASSWORD || "",
-    // Password for /leaders (any username). The admin password also works. Neither set = /leaders is off.
-    leadersPassword: env.LEADERS_PASSWORD || "",
+    // The leaders' backend (/leaders) is behind the admin login. The QR sign-in link carries a key derived from the admin
+    // password (so changing the password retires every printed QR); set this to pin a fixed key instead.
+    leadersKey: env.LEADERS_SIGNIN_KEY || "",
     leaders: { ...LEADERS_DEFAULTS, callings: [...LEADERS_DEFAULTS.callings] },
     // Secret in the missionaries' private link (/m/<key>). Unset = that page is off.
     missionaryKey: env.MISSIONARY_KEY || "",

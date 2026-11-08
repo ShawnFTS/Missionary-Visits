@@ -6,6 +6,7 @@
 //
 // Texting leaders is a message type the Twilio verification does not cover yet, so it is off until an
 // admin turns on `textsEnabled`, and it only ever reaches people recorded as having agreed to it.
+import crypto from "node:crypto";
 import { zonedToUtc, addDays, dowOf, isDate, fmtDay, fmtTime, todayInZone } from "./time.js";
 import { normalizePhone, formatPhone } from "./people.js";
 import { parseTime } from "./settings.js";
@@ -152,7 +153,7 @@ export function leadersView(cfg) {
 
 const personRow = (p) => ({
   id: p.id, name: p.name, calling: p.calling, ward: p.ward,
-  phone: p.phone ? formatPhone(p.phone) : "", smsOk: !!p.sms_ok && !!p.phone,
+  phone: p.phone ? formatPhone(p.phone) : "", smsOk: !!p.sms_ok && !!p.phone, smsSource: p.sms_ok ? p.sms_ok_source || "" : "",
 });
 export const listPeople = (db) => db.prepare(`SELECT * FROM leaders_people WHERE active = 1 ORDER BY name COLLATE NOCASE`).all().map(personRow);
 
@@ -174,12 +175,14 @@ export function savePerson(db, cfg, body, nowMs) {
     // Consent keeps the moment it was given unless it is withdrawn or newly given.
     const smsOk = body.smsOk && phone ? 1 : 0;
     const at = smsOk ? (cur.sms_ok && cur.phone === phone ? cur.sms_ok_at : nowMs) : null;
-    db.prepare(`UPDATE leaders_people SET name=?, calling=?, ward=?, phone=?, sms_ok=?, sms_ok_at=? WHERE id=?`).run(name, calling, ward, phone, smsOk, at, id);
+    const keep = smsOk && cur.sms_ok && cur.phone === phone; // unchanged consent keeps how it was given
+    db.prepare(`UPDATE leaders_people SET name=?, calling=?, ward=?, phone=?, sms_ok=?, sms_ok_at=?, sms_ok_source=?, sms_ok_text=? WHERE id=?`)
+      .run(name, calling, ward, phone, smsOk, at, smsOk ? (keep ? cur.sms_ok_source : "recorded by an admin") : null, keep ? cur.sms_ok_text : null, id);
     return { id };
   }
   const smsOk = body.smsOk && phone ? 1 : 0;
-  const r = db.prepare(`INSERT INTO leaders_people (name, calling, ward, phone, sms_ok, sms_ok_at, created_at) VALUES (?,?,?,?,?,?,?)`)
-    .run(name, calling, ward, phone, smsOk, smsOk ? nowMs : null, nowMs);
+  const r = db.prepare(`INSERT INTO leaders_people (name, calling, ward, phone, sms_ok, sms_ok_at, sms_ok_source, created_at) VALUES (?,?,?,?,?,?,?,?)`)
+    .run(name, calling, ward, phone, smsOk, smsOk ? nowMs : null, smsOk ? "recorded by an admin" : null, nowMs);
   return { id: Number(r.lastInsertRowid) };
 }
 
@@ -228,10 +231,96 @@ export function updateAttendance(db, cfg, date, id, body) {
 export const removeAttendance = (db, date, id) => db.prepare(`DELETE FROM leaders_attendance WHERE id = ? AND meeting_date = ?`).run(Number(id), date);
 
 export function meetingDetail(db, cfg, date) {
-  const attendees = db.prepare(`SELECT id, person_id personId, name, calling, ward FROM leaders_attendance WHERE meeting_date = ? ORDER BY ward, name COLLATE NOCASE`).all(date);
+  const attendees = db.prepare(`SELECT id, person_id personId, name, calling, ward, source FROM leaders_attendance WHERE meeting_date = ? ORDER BY ward, name COLLATE NOCASE`).all(date);
   const here = new Set(attendees.map((a) => a.ward));
   const wards = cfg.wards;
   return { meeting: meetingFor(db, cfg, date), attendees, represented: wards.filter((w) => here.has(w)), missing: wards.filter((w) => !here.has(w)) };
+}
+
+// ---- QR sign-in -------------------------------------------------------------------------------
+//
+// Each person scans a QR code at the meeting and signs THEMSELVES in: name and mobile typed, calling and ward picked
+// from the same lists as everywhere else, and a checkbox for texts. That is how consent is captured: by the person,
+// on a form that shows exactly what they agree to, with that wording stored beside their name.
+//
+// The link carries a key derived from the admin password, so the printed card works every month but nobody who never
+// saw it can sign in, and changing the admin password retires every old card. It also only works while a meeting is
+// actually on (a couple of hours before to a few hours after), so a copy of the link cannot invent attendance for
+// some other night.
+export const SIGNIN_OPENS_BEFORE = 2 * HOUR;
+export const SIGNIN_CLOSES_AFTER = 6 * HOUR;
+
+export const CONSENT_TEXT =
+  "By checking this box you agree to receive text messages from Missionary Visits (operated by FIDUS Technology Solutions LLC) " +
+  "with reminders for future missionary coordination meetings and updates about them. Message frequency varies, about 2 to 4 a month. " +
+  "Message and data rates may apply. Reply STOP to opt out or HELP for help. Consent is not a condition of signing in.";
+
+export function signInKey(cfg) {
+  if (cfg.leadersKey) return cfg.leadersKey;
+  if (!cfg.adminPassword) return "";
+  return crypto.createHmac("sha256", cfg.adminPassword).update("leaders-signin").digest("base64url").slice(0, 22);
+}
+export function keyMatches(cfg, given) {
+  const k = signInKey(cfg), g = String(given ?? "");
+  if (!k || k.length !== g.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(k), Buffer.from(g));
+}
+
+// "18:00" wall-clock for an instant in the stake's zone.
+const wallClock = (ms, tz) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+
+// The meeting that is on right now, or none (plus the next one, so the form can say when sign-in opens).
+export function signInStatus(db, cfg, nowMs) {
+  const today = todayInZone(nowMs, cfg.tz);
+  const meetings = scheduledDates(cfg, addDays(today, -40), addDays(today, 60)).map((d) => meetingFor(db, cfg, d)).sort((a, b) => a.startUtc - b.startUtc);
+  const live = meetings.find((m) => !m.cancelled && nowMs >= m.startUtc - SIGNIN_OPENS_BEFORE && nowMs <= m.startUtc + SIGNIN_CLOSES_AFTER);
+  if (live) return { open: true, meeting: live };
+  const next = meetings.find((m) => !m.cancelled && m.startUtc - SIGNIN_OPENS_BEFORE > nowMs);
+  return { open: false, next: next || null, opensText: next ? `${fmtDay(zonedDate(next.startUtc - SIGNIN_OPENS_BEFORE, cfg.tz), { weekday: "long", month: "long", day: "numeric" })} at ${fmtTime(wallClock(next.startUtc - SIGNIN_OPENS_BEFORE, cfg.tz))}` : "" };
+}
+const zonedDate = (ms, tz) => todayInZone(ms, tz);
+
+export function signIn(db, cfg, body, nowMs) {
+  const st = signInStatus(db, cfg, nowMs);
+  if (!st.open) return { status: 409, error: st.next ? `Sign-in isn't open yet. It opens ${st.opensText}.` : "There's no meeting to sign in to right now." };
+  const name = clean(body.name, 60);
+  if (!name) return { status: 400, error: "Please type your name." };
+  const calling = clean(body.calling, 50), ward = clean(body.ward, 40);
+  if (!cfg.leaders.callings.includes(calling)) return { status: 400, error: "Please choose your calling." };
+  if (!wardChoices(cfg).includes(ward)) return { status: 400, error: "Please choose your ward." };
+  const phone = body.phone ? normalizePhone(body.phone) : null;
+  if (body.phone && !phone) return { status: 400, error: "Please enter a 10-digit mobile number, or leave it blank." };
+  const consent = body.consent === true;
+  if (consent && !phone) return { status: 400, error: "Add your mobile number to get texts, or untick the box." };
+
+  // Same person returning? A phone number is the best match, a name the next best (names are unique on the roster).
+  let person = phone && db.prepare(`SELECT * FROM leaders_people WHERE active = 1 AND phone = ?`).get(phone);
+  if (!person) person = db.prepare(`SELECT * FROM leaders_people WHERE active = 1 AND lower(name) = lower(?)`).get(name);
+  const tx = db.transaction(() => {
+    let id;
+    if (person) {
+      id = person.id;
+      const clash = db.prepare(`SELECT 1 FROM leaders_people WHERE active = 1 AND lower(name) = lower(?) AND id != ?`).get(name, id);
+      const keepPhone = phone || person.phone;
+      const had = !!person.sms_ok && person.phone === keepPhone;
+      const grant = consent && !had;
+      // Ticking grants consent. Not ticking never silently takes it away; replying STOP is how it is withdrawn.
+      db.prepare(`UPDATE leaders_people SET name = ?, calling = ?, ward = ?, phone = ?, sms_ok = ?, sms_ok_at = ?, sms_ok_source = ?, sms_ok_text = ? WHERE id = ?`)
+        .run(clash ? person.name : name, calling, ward, keepPhone, had || grant ? 1 : 0,
+          grant ? nowMs : had ? person.sms_ok_at : null, grant ? "self sign-in (QR)" : had ? person.sms_ok_source : null, grant ? CONSENT_TEXT : had ? person.sms_ok_text : null, id);
+    } else {
+      id = Number(db.prepare(`INSERT INTO leaders_people (name, calling, ward, phone, sms_ok, sms_ok_at, sms_ok_source, sms_ok_text, created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(name, calling, ward, phone, consent ? 1 : 0, consent ? nowMs : null, consent ? "self sign-in (QR)" : null, consent ? CONSENT_TEXT : null, nowMs).lastInsertRowid);
+    }
+    const already = !!db.prepare(`SELECT 1 FROM leaders_attendance WHERE meeting_date = ? AND person_id = ?`).get(st.meeting.date, id);
+    db.prepare(`INSERT INTO leaders_attendance (meeting_date, person_id, name, calling, ward, source, created_at) VALUES (?,?,?,?,?, 'qr', ?)
+                ON CONFLICT(meeting_date, person_id) DO UPDATE SET calling = excluded.calling, ward = excluded.ward`)
+      .run(st.meeting.date, id, name, calling, ward, nowMs);
+    return { id, already };
+  });
+  const r = tx();
+  const texts = !!db.prepare(`SELECT sms_ok FROM leaders_people WHERE id = ?`).get(r.id).sms_ok;
+  return { ok: true, already: r.already, name, texts, meeting: { dayLabel: st.meeting.dayLabel, timeLabel: st.meeting.timeLabel, place: st.meeting.place } };
 }
 
 // ---- messages and texting ---------------------------------------------------------------------

@@ -398,7 +398,7 @@ async function loadLeadersAdmin() {
   const d = await (await fetch("/api/admin/leaders")).json();
   const box = $("ldBox"); box.replaceChildren();
   box.append(el("strong", "", "Page: "), Object.assign(el("a", "", d.url), { href: d.url, target: "_blank", rel: "noreferrer" }), el("br"));
-  box.append(el("span", "", d.passwordSet ? "Password: set (LEADERS_PASSWORD in Railway). The admin password also works." : "No leaders password yet. Add LEADERS_PASSWORD in Railway → Variables and redeploy" + (d.adminPasswordWorks ? "; until then only the admin password opens it." : ".")));
+  box.append(el("span", "", "Opens with your admin login. Each person signs themselves in at the meeting by scanning the QR code on the page's Sign-in QR tab."));
   box.append(el("br"), el("span", "", `${d.people} ${d.people === 1 ? "person" : "people"} on the leaders list, ${d.recipients} agreed to texts.`));
   $("ldTexts").checked = d.textsEnabled;
   $("ldTextNote").textContent = d.smsConfigured ? "Off by default. Turn on only after the leaders you add have agreed to be texted, and after Twilio's registration covers these messages."
