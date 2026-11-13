@@ -50,6 +50,7 @@
 <main>
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="meeting" aria-selected="true">Meeting</button>
+    <button role="tab" data-tab="history" aria-selected="false">History</button>
     <button role="tab" data-tab="huddles" aria-selected="false">Huddles</button>
     <button role="tab" data-tab="signin" aria-selected="false">Sign-in QR</button>
     <button role="tab" data-tab="people" aria-selected="false">People</button>
@@ -165,6 +166,23 @@
       <p class="err" id="qrMsg"></p>
       <p class="fine" id="qrUrl" style="word-break:break-all"></p>
     </section>
+  </div>
+
+  <!-- ===== History ===== -->
+  <div data-pane="history" hidden>
+    <section class="panel">
+      <h2 class="serif" style="margin-top:0">Attendance history</h2>
+      <div class="grid">
+        <label class="f">Show <select id="hRange"><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="12" selected>Last 12 months</option><option value="24">Last 24 months</option></select></label>
+        <div><a id="hPdf" class="btn" href="#" download>Download PDF</a></div>
+      </div>
+      <div id="hSummary" class="chips" style="margin-top:12px"></div>
+      <p id="hTrend" style="font-weight:600;margin:12px 0 0"></p>
+      <div id="hChart" style="margin-top:8px"></div>
+    </section>
+    <section class="panel"><h3 class="serif" style="margin-top:0">By ward</h3><div id="hWards" style="overflow-x:auto"></div></section>
+    <section class="panel"><h3 class="serif" style="margin-top:0">Meeting by meeting</h3><div id="hMeetings" style="overflow-x:auto"></div></section>
+    <section class="panel"><h3 class="serif" style="margin-top:0">Individuals</h3><p class="fine">How often each person has come to the meetings in this period.</p><div id="hPeople" style="overflow-x:auto"></div></section>
   </div>
 
   <!-- ===== People ===== -->
@@ -525,6 +543,59 @@ function renderHuddleShare() {
   box.append(url, row, yl, warn, danger);
 }
 document.querySelector("[data-tab=huddles]").addEventListener("click", () => loadHuddles(true));
+
+// ---- history: attendance per meeting, a trend, and a PDF ----
+const SVGNS = "http://www.w3.org/2000/svg";
+const svg = (tag, attrs = {}, text) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text != null) n.textContent = text; return n; };
+function histTable(box, heads, rows) {
+  box.replaceChildren();
+  if (!rows.length) { box.append(el("p", "fine", "Nothing recorded for this period yet.")); return; }
+  const t = el("table"); t.innerHTML = "<tr>" + heads.map((h) => `<th>${h}</th>`).join("") + "</tr>";
+  for (const r of rows) { const tr = el("tr"); for (const c of r) tr.append(el("td", "", String(c))); t.append(tr); }
+  box.append(t);
+}
+function drawChart(h) {
+  const box = $("hChart"); box.replaceChildren();
+  if (!h.meetings.length) { box.append(el("p", "fine", "No meetings have been held in this period.")); return; }
+  const n = h.meetings.length, W = Math.max(560, n * 64 + 50), H = 220, L = 30, B = 26, T = 14;
+  const max = Math.max(5, ...h.meetings.map((m) => m.count)), step = max <= 10 ? 2 : Math.ceil(max / 5), top = Math.ceil(max / step) * step;
+  const y = (v) => T + (H - T - B) * (1 - v / top), slot = (W - L - 6) / n, bw = Math.min(30, slot * 0.62);
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "Attendance at each meeting" });
+  s.style.maxWidth = W + "px";
+  for (let v = 0; v <= top; v += step) {
+    s.append(svg("line", { x1: L, x2: W - 6, y1: y(v), y2: y(v), stroke: "#d8d2c4", "stroke-width": 1 }));
+    s.append(svg("text", { x: L - 5, y: y(v) + 3, "text-anchor": "end", "font-size": 10, fill: "#6b6b6b" }, v));
+  }
+  h.meetings.forEach((m, i) => {
+    const x = L + slot * i + (slot - bw) / 2;
+    const bar = svg("rect", { x, y: y(m.count), width: bw, height: Math.max(1, y(0) - y(m.count)), rx: 3, fill: "#1f3a5f" });
+    bar.append(svg("title", {}, `${m.longLabel}: ${m.count} attended, ${m.wardsRepresented} of ${m.wardsTotal} wards`));
+    s.append(bar);
+    s.append(svg("text", { x: x + bw / 2, y: y(m.count) - 4, "text-anchor": "middle", "font-size": 11, "font-weight": 700, fill: "#222" }, m.count));
+    if (n <= 14 || i % 2 === 0) s.append(svg("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle", "font-size": 10, fill: "#6b6b6b" }, m.label));
+  });
+  const ay = y(h.summary.average);
+  s.append(svg("line", { x1: L, x2: W - 6, y1: ay, y2: ay, stroke: "#b8892b", "stroke-width": 1.5, "stroke-dasharray": "5 4" }));
+  const wrap = el("div"); wrap.style.overflowX = "auto"; wrap.append(s); box.append(wrap);
+  box.append(el("p", "fine", `Dashed line: average of ${h.summary.average} per meeting. Hover a bar for the date and wards present.`));
+}
+async function loadHistory() {
+  const months = $("hRange").value;
+  $("hPdf").href = `/api/leaders/history.pdf?months=${months}`;
+  const r = await api(`/api/leaders/history?months=${months}`);
+  if (!r.ok) { $("hTrend").textContent = "Couldn't load the history. Please refresh."; return; }
+  const h = r.data, s = h.summary;
+  const chips = $("hSummary"); chips.replaceChildren();
+  for (const t of [`${s.held} meetings held`, `Average ${s.average}`, s.best ? `Highest ${s.best.count} (${s.best.label})` : "", s.lowest ? `Lowest ${s.lowest.count} (${s.lowest.label})` : "", s.cancelled ? `${s.cancelled} cancelled` : "", s.unrecorded ? `${s.unrecorded} with no attendance recorded (not counted)` : ""].filter(Boolean)) chips.append(el("span", "chip here", t));
+  const tr = $("hTrend"); tr.textContent = (h.trend.direction === "up" ? "▲ " : h.trend.direction === "down" ? "▼ " : h.trend.direction === "steady" ? "● " : "") + h.trend.text;
+  tr.style.color = h.trend.direction === "up" ? "var(--open)" : h.trend.direction === "down" ? "var(--danger)" : "var(--ink)";
+  drawChart(h);
+  histTable($("hWards"), ["Ward", "Meetings attended", "Rate", "Different people"], h.wards.map((w) => [w.ward, `${w.meetingsAttended} of ${w.meetingsHeld}`, `${w.rate}%`, w.people]));
+  histTable($("hMeetings"), ["Date", "Attended", "Wards present", "Note"], [...h.meetings].reverse().map((m) => [m.longLabel, m.count, `${m.wardsRepresented} of ${m.wardsTotal}`, m.note]));
+  histTable($("hPeople"), ["Name", "Calling", "Ward", "Attended", "Last came"], h.people.map((p) => [p.name, p.calling, p.ward, `${p.attended} of ${s.held}`, p.lastLabel]));
+}
+document.querySelector("[data-tab=history]").addEventListener("click", loadHistory);
+$("hRange").onchange = loadHistory;
 
 // ===== Sign-in QR =====
 function renderSignIn() {

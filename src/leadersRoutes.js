@@ -9,6 +9,7 @@ import QRCode from "qrcode";
 import { isDate } from "./time.js";
 import { smsConfigured } from "./sms.js";
 import * as L from "./leaders.js";
+import { attendanceHistory, attendancePdf } from "./attendanceReport.js";
 
 export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAdmin }) {
   const ctx = () => ({ db, cfg, sendSms, now });
@@ -45,6 +46,17 @@ export function mountLeaders({ app, db, cfg, now, sendSms, same, root, requireAd
     const d = meetingDate(req, res); if (!d) return;
     res.set("Cache-Control", "no-store");
     res.json(L.meetingDetail(db, cfg, d));
+  });
+
+  // Attendance history: counts per meeting, by ward, by person, and a trend. Read-only; the PDF is the same data.
+  app.get("/api/leaders/history", requireAdmin, (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(attendanceHistory(db, cfg, now(), req.query.months));
+  });
+  app.get("/api/leaders/history.pdf", requireAdmin, (req, res) => {
+    const h = attendanceHistory(db, cfg, now(), req.query.months);
+    res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="meeting-attendance-${h.to}.pdf"`, "Cache-Control": "no-store" });
+    attendancePdf(h).pipe(res);
   });
 
   app.post("/api/leaders/meetings/:date/attendance", requireAdmin, (req, res) => {
